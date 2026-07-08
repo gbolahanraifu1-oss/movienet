@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: MovieNet API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: movies
+    description: Movie operations
+  - name: anime
+    description: Anime operations
+  - name: trending
+    description: Trending content
+  - name: sports
+    description: Sports operations
+  - name: calendar
+    description: Release calendar
+  - name: search
+    description: Search operations
+  - name: reminders
+    description: User reminders
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,393 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /movies:
+    get:
+      operationId: listMovies
+      tags: [movies]
+      summary: List movies with optional filtering
+      parameters:
+        - name: genre
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [popular, latest, rating, title]
+            default: popular
+      responses:
+        "200":
+          description: List of movies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentListResponse"
+
+  /movies/trending:
+    get:
+      operationId: getTrendingMovies
+      tags: [movies]
+      summary: Get trending movies
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Trending movies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContentItem"
+
+  /movies/{id}:
+    get:
+      operationId: getMovie
+      tags: [movies]
+      summary: Get movie details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Movie details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /anime:
+    get:
+      operationId: listAnime
+      tags: [anime]
+      summary: List anime with optional filtering
+      parameters:
+        - name: genre
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [popular, latest, rating, title]
+            default: popular
+      responses:
+        "200":
+          description: List of anime
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentListResponse"
+
+  /anime/trending:
+    get:
+      operationId: getTrendingAnime
+      tags: [anime]
+      summary: Get trending anime
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Trending anime
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContentItem"
+
+  /anime/{id}:
+    get:
+      operationId: getAnime
+      tags: [anime]
+      summary: Get anime details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Anime details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /trending:
+    get:
+      operationId: getTrending
+      tags: [trending]
+      summary: Get all trending content (movies + anime + sports)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 40
+      responses:
+        "200":
+          description: Trending content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrendingResponse"
+
+  /sports/events:
+    get:
+      operationId: getSportsEvents
+      tags: [sports]
+      summary: Get upcoming sports events/schedules
+      parameters:
+        - name: league
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Sports events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SportsEvent"
+
+  /sports/scores:
+    get:
+      operationId: getLiveScores
+      tags: [sports]
+      summary: Get live/recent scores
+      parameters:
+        - name: league
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Live scores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SportsScore"
+
+  /sports/news:
+    get:
+      operationId: getSportsNews
+      tags: [sports]
+      summary: Get sports news
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Sports news
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SportsNewsItem"
+
+  /calendar:
+    get:
+      operationId: getCalendar
+      tags: [calendar]
+      summary: Get upcoming release calendar
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [all, movie, anime]
+            default: all
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Upcoming releases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEntry"
+
+  /search:
+    get:
+      operationId: search
+      tags: [search]
+      summary: Search across all content
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [all, movie, anime]
+            default: all
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentListResponse"
+
+  /reminders:
+    get:
+      operationId: listReminders
+      tags: [reminders]
+      summary: Get user's reminders
+      responses:
+        "200":
+          description: User reminders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reminder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createReminder
+      tags: [reminders]
+      summary: Create a reminder for an upcoming release
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderInput"
+      responses:
+        "201":
+          description: Reminder created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reminders/{id}:
+    delete:
+      operationId: deleteReminder
+      tags: [reminders]
+      summary: Delete a reminder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /genres:
+    get:
+      operationId: listGenres
+      tags: [movies]
+      summary: Get all available genres
+      responses:
+        "200":
+          description: List of genres
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Genre"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +435,358 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    ContentItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [movie, anime]
+        title:
+          type: string
+        posterUrl:
+          type: ["string", "null"]
+        backdropUrl:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        year:
+          type: ["integer", "null"]
+        genres:
+          type: array
+          items:
+            type: string
+        overview:
+          type: ["string", "null"]
+        isReleased:
+          type: boolean
+        releaseDate:
+          type: ["string", "null"]
+      required:
+        - id
+        - type
+        - title
+        - isReleased
+        - genres
+
+    ContentDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [movie, anime]
+        title:
+          type: string
+        posterUrl:
+          type: ["string", "null"]
+        backdropUrl:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        year:
+          type: ["integer", "null"]
+        genres:
+          type: array
+          items:
+            type: string
+        overview:
+          type: ["string", "null"]
+        isReleased:
+          type: boolean
+        releaseDate:
+          type: ["string", "null"]
+        trailerUrl:
+          type: ["string", "null"]
+        runtime:
+          type: ["integer", "null"]
+        status:
+          type: ["string", "null"]
+        tagline:
+          type: ["string", "null"]
+        cast:
+          type: array
+          items:
+            $ref: "#/components/schemas/CastMember"
+        similar:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentItem"
+        downloadLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DownloadLink"
+      required:
+        - id
+        - type
+        - title
+        - isReleased
+        - genres
+        - cast
+        - similar
+        - downloadLinks
+
+    CastMember:
+      type: object
+      properties:
+        name:
+          type: string
+        character:
+          type: ["string", "null"]
+        profileUrl:
+          type: ["string", "null"]
+      required:
+        - name
+
+    DownloadLink:
+      type: object
+      properties:
+        quality:
+          type: string
+        size:
+          type: string
+        format:
+          type: string
+        url:
+          type: string
+      required:
+        - quality
+        - size
+        - format
+        - url
+
+    ContentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentItem"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - totalPages
+
+    TrendingResponse:
+      type: object
+      properties:
+        movies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentItem"
+        anime:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentItem"
+        featured:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentItem"
+      required:
+        - movies
+        - anime
+        - featured
+
+    SportsEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        league:
+          type: string
+        leagueLogo:
+          type: ["string", "null"]
+        homeTeamLogo:
+          type: ["string", "null"]
+        awayTeamLogo:
+          type: ["string", "null"]
+        startTime:
+          type: string
+        venue:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [scheduled, live, finished, postponed]
+        streamUrl:
+          type: ["string", "null"]
+      required:
+        - id
+        - homeTeam
+        - awayTeam
+        - league
+        - startTime
+        - status
+
+    SportsScore:
+      type: object
+      properties:
+        id:
+          type: string
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        homeScore:
+          type: ["integer", "null"]
+        awayScore:
+          type: ["integer", "null"]
+        league:
+          type: string
+        leagueLogo:
+          type: ["string", "null"]
+        homeTeamLogo:
+          type: ["string", "null"]
+        awayTeamLogo:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [live, finished, upcoming]
+        minute:
+          type: ["string", "null"]
+        startTime:
+          type: string
+      required:
+        - id
+        - homeTeam
+        - awayTeam
+        - league
+        - status
+        - startTime
+
+    SportsNewsItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+        source:
+          type: string
+        publishedAt:
+          type: string
+        url:
+          type: string
+        league:
+          type: ["string", "null"]
+      required:
+        - id
+        - title
+        - summary
+        - source
+        - publishedAt
+        - url
+
+    CalendarEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [movie, anime]
+        title:
+          type: string
+        posterUrl:
+          type: ["string", "null"]
+        releaseDate:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        overview:
+          type: ["string", "null"]
+        isUrgent:
+          type: boolean
+      required:
+        - id
+        - type
+        - title
+        - releaseDate
+        - genres
+        - isUrgent
+
+    Reminder:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        contentId:
+          type: string
+        contentType:
+          type: string
+          enum: [movie, anime]
+        contentTitle:
+          type: string
+        posterUrl:
+          type: ["string", "null"]
+        releaseDate:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - contentId
+        - contentType
+        - contentTitle
+        - releaseDate
+        - createdAt
+
+    ReminderInput:
+      type: object
+      properties:
+        contentId:
+          type: string
+        contentType:
+          type: string
+          enum: [movie, anime]
+        contentTitle:
+          type: string
+        posterUrl:
+          type: ["string", "null"]
+        releaseDate:
+          type: string
+      required:
+        - contentId
+        - contentType
+        - contentTitle
+        - releaseDate
+
+    Genre:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name

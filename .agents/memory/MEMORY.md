@@ -1,0 +1,1 @@
+- [MovieNet Architecture](movienet-arch.md) — TMDB mock fallback, Clerk auth wiring, generated hook queryKey requirement, DB schema location

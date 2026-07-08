@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "MovieNet"
+version = "1.0.0"
+id = "artifacts/movienet"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24782
+
+[services.development]
+run = "pnpm --filter @workspace/movienet run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/movienet", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/movienet/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24782"
+BASE_PATH = "/"

@@ -1,8 +1,22 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import healthRouter from "./health";
+import moviesRouter from "./movies";
+import animeRouter from "./anime";
+import trendingRouter from "./trending";
+import sportsRouter from "./sports";
+import calendarRouter from "./calendar";
+import searchRouter from "./search";
+import remindersRouter from "./reminders";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.use(healthRouter);
+router.use(moviesRouter);
+router.use(animeRouter);
+router.use(trendingRouter);
+router.use(sportsRouter);
+router.use(calendarRouter);
+router.use(searchRouter);
+router.use(remindersRouter);
 
 export default router;
