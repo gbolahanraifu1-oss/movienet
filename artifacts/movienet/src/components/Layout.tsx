@@ -169,13 +169,58 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="bg-zinc-950 border-t border-white/5 py-12 relative z-10">
-        <div className="container mx-auto px-4 text-center text-zinc-500 text-sm">
-          <div className="flex items-center justify-center gap-2 mb-4 opacity-50 grayscale">
-            <img src="/logo.svg" alt="MovieNet" className="w-6 h-6" />
-            <span className="font-display font-bold text-lg">MovieNet</span>
+      <footer className="bg-zinc-950 border-t border-white/5 py-14 relative z-10">
+        <div className="container mx-auto px-4 max-w-6xl">
+          {/* Top row */}
+          <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-10 mb-10">
+            {/* Brand */}
+            <div className="flex flex-col items-center md:items-start gap-3">
+              <div className="flex items-center gap-2">
+                <img src="/logo.svg" alt="MovieNet" className="w-7 h-7" />
+                <span className="font-display font-bold text-lg text-white">Movie<span className="text-primary">Net</span></span>
+              </div>
+              <p className="text-xs text-zinc-500 max-w-[220px] text-center md:text-left leading-relaxed">
+                Free, ad-supported movie discovery. No subscription required.
+              </p>
+            </div>
+
+            {/* Links */}
+            <div className="flex flex-wrap justify-center md:justify-end gap-x-10 gap-y-6">
+              <div className="flex flex-col gap-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Explore</p>
+                {[
+                  { href: "/movies", label: "Movies" },
+                  { href: "/anime", label: "Anime" },
+                  { href: "/sports", label: "Sports" },
+                  { href: "/trending", label: "Trending" },
+                ].map(l => (
+                  <Link key={l.href} href={l.href} className="text-sm text-zinc-400 hover:text-white transition-colors">{l.label}</Link>
+                ))}
+              </div>
+              <div className="flex flex-col gap-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Company</p>
+                {[
+                  { href: "/about", label: "About Us" },
+                  { href: "/contact", label: "Contact" },
+                  { href: "/subscription", label: "Subscription" },
+                  { href: "/calendar", label: "Release Calendar" },
+                ].map(l => (
+                  <Link key={l.href} href={l.href} className="text-sm text-zinc-400 hover:text-white transition-colors">{l.label}</Link>
+                ))}
+              </div>
+            </div>
           </div>
-          <p>© {new Date().getFullYear()} MovieNet. This is a gen-z style demo app.</p>
+
+          {/* Bottom row */}
+          <div className="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-600">
+            <p>© {new Date().getFullYear()} MovieNet. All rights reserved.</p>
+            <div className="flex items-center gap-4">
+              <Link href="/about" className="hover:text-zinc-400 transition-colors">About</Link>
+              <Link href="/contact" className="hover:text-zinc-400 transition-colors">Contact</Link>
+              <span>·</span>
+              <span>Not affiliated with any studio or distributor.</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

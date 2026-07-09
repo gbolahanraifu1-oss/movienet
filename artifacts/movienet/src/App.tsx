@@ -18,6 +18,8 @@ import { TitleDetail } from "./pages/TitleDetail";
 import { Calendar } from "./pages/Calendar";
 import { Subscription } from "./pages/Subscription";
 import { DownloadPage } from "./pages/Download";
+import { About } from "./pages/About";
+import { Contact } from "./pages/Contact";
 
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
@@ -185,6 +187,8 @@ function ClerkProviderWithRoutes() {
                 <Route path="/calendar" component={Calendar} />
                 <Route path="/subscription" component={Subscription} />
                 <Route path="/download" component={DownloadPage} />
+                <Route path="/about" component={About} />
+                <Route path="/contact" component={Contact} />
                 <Route>
                   <div className="flex min-h-[50vh] flex-col items-center justify-center text-center px-4">
                     <h1 className="text-4xl font-display font-bold text-foreground mb-4">404 - Not Found</h1>
