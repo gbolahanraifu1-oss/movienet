@@ -1,4 +1,4 @@
-export function AdSlot() {
+export function AdSlot({ label }: { label?: string } = {}) {
   return (
     <div className="w-full max-w-5xl mx-auto my-8 px-4">
       <div 

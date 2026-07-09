@@ -1,3 +1,5 @@
+import { getYtsLinks } from "./yts";
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const API_KEY = process.env.TMDB_API_KEY || "";
@@ -127,9 +129,16 @@ export async function getMovieDetail(id: string) {
     const data = await tmdbFetch(`/movie/${id}`, {
       append_to_response: "videos,credits,similar,recommendations",
     });
-    return formatMovieDetail(data, "movie");
+    const detail = formatMovieDetail(data, "movie");
+    // Enrich with real YTS download links
+    if (detail.isReleased) {
+      const yts = await getYtsLinks(detail.title, detail.year);
+      if (yts.length) detail.downloadLinks = yts;
+    }
+    return detail;
   } catch {
     const mock = getMockMovies().find(m => m.id === id) || getMockMovies()[0];
+    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -138,7 +147,7 @@ export async function getMovieDetail(id: string) {
       tagline: "An epic adventure awaits.",
       cast: getMockCast(),
       similar: getMockMovies().slice(0, 6),
-      downloadLinks: mock.isReleased ? generateDownloadLinks(mock.title, "movie") : [],
+      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "movie"),
     };
   }
 }
@@ -190,9 +199,16 @@ export async function getAnimeDetail(id: string) {
     const data = await tmdbFetch(`/tv/${id}`, {
       append_to_response: "videos,credits,similar,recommendations",
     });
-    return formatMovieDetail(data, "anime");
+    const detail = formatMovieDetail(data, "anime");
+    // Try YTS for anime movies; most series won't match but it's worth trying
+    if (detail.isReleased) {
+      const yts = await getYtsLinks(detail.title, detail.year);
+      if (yts.length) detail.downloadLinks = yts;
+    }
+    return detail;
   } catch {
     const mock = getMockAnime().find(a => a.id === id) || getMockAnime()[0];
+    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -201,7 +217,7 @@ export async function getAnimeDetail(id: string) {
       tagline: "The legend continues.",
       cast: getMockCast(),
       similar: getMockAnime().slice(0, 6),
-      downloadLinks: mock.isReleased ? generateDownloadLinks(mock.title, "anime") : [],
+      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "anime"),
     };
   }
 }

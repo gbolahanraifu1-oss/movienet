@@ -2,7 +2,8 @@ import { useGetMovie, useGetAnime, useCreateReminder, getGetMovieQueryKey, getGe
 import { useParams } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, Clock, CalendarIcon, Download, Bell, Play } from "lucide-react";
+import { Star, Clock, CalendarIcon, Download, Bell, Play, Zap } from "lucide-react";
+import { Link } from "wouter";
 import { ContentCard } from "../components/ContentCard";
 import { AdSlot } from "../components/AdSlot";
 import { format } from "date-fns";
@@ -202,17 +203,44 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
             {/* Downloads */}
             {data.isReleased && data.downloadLinks && data.downloadLinks.length > 0 && (
               <div className="mt-8">
-                <h3 className="text-lg font-bold font-display text-white mb-4">Downloads</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {data.downloadLinks.map((link, i) => (
-                    <a key={i} href={link.url} className="flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 p-4 rounded-xl border border-white/5 transition-colors group">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-white group-hover:text-primary transition-colors">{link.quality}</span>
-                        <span className="text-xs text-zinc-500">{link.format} • {link.size}</span>
-                      </div>
-                      <Download className="w-5 h-5 text-zinc-400 group-hover:text-primary transition-colors" />
-                    </a>
-                  ))}
+                <h3 className="text-lg font-bold font-display text-white mb-1">Downloads</h3>
+                <p className="text-xs text-zinc-500 mb-4">Opens in your torrent client (qBittorrent, uTorrent, etc.)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {data.downloadLinks.map((link: any, i: number) => {
+                    const params = new URLSearchParams({
+                      title: data.title,
+                      quality: link.quality,
+                      size: link.size ?? "",
+                      format: link.format ?? "",
+                      url: link.url ?? "",
+                      magnet: link.magnet ?? "",
+                      poster: data.posterUrl ?? "",
+                      back: `/title/${data.type}/${data.id}`,
+                    });
+                    return (
+                      <Link
+                        key={i}
+                        href={`/download?${params.toString()}`}
+                        className="flex items-center justify-between bg-zinc-900 hover:bg-zinc-800 p-4 rounded-xl border border-white/5 transition-all group hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white group-hover:text-primary transition-colors">{link.quality}</span>
+                            {(link.seeds ?? 0) > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 font-medium">
+                                {link.seeds} seeds
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-zinc-500">{link.format} • {link.size}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-zinc-600 group-hover:text-primary transition-colors" />
+                          <Download className="w-5 h-5 text-zinc-400 group-hover:text-primary transition-colors" />
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             )}
