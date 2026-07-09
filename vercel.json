@@ -1,6 +1,6 @@
 {
   "buildCommand": "pnpm -w run typecheck:libs && pnpm --filter @workspace/movienet run build",
-  "outputDirectory": "dist",
+  "outputDirectory": "artifacts/movienet/dist",
   "framework": null,
   "functions": {
     "api/[...path].ts": {
