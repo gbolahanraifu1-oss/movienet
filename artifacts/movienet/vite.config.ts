@@ -14,6 +14,13 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH || '/';
 
+// On Vercel, write the build output to the repo root's dist/ so that
+// `"outputDirectory": "dist"` in vercel.json resolves correctly.
+// Locally (Replit), keep the output inside the artifact directory.
+const outDir = process.env.VERCEL
+  ? path.resolve(import.meta.dirname, '..', '..', 'dist')
+  : path.resolve(import.meta.dirname, 'dist');
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -48,7 +55,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, 'dist'),
+    outDir,
     emptyOutDir: true,
   },
   server: {
