@@ -1,5 +1,6 @@
 {
-  "buildCommand": "ROOT=$(pnpm -w exec pwd) && pnpm -w run typecheck:libs && pnpm --filter @workspace/movienet run build && rm -rf \"$ROOT/dist\" && cp -R \"$ROOT/artifacts/movienet/dist\" \"$ROOT/dist\"",
+  "buildCommand": "pnpm -w run typecheck:libs && pnpm --filter @workspace/movienet run build && rm -rf dist && cp -R artifacts/movienet/dist dist",
+  "outputDirectory": "dist",
   "framework": null,
   "functions": {
     "api/[...path].ts": {
