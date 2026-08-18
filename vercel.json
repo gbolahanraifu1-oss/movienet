@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm -w run typecheck:libs && pnpm --filter @workspace/movienet run build && if [ -d artifacts/movienet/dist ]; then rm -rf dist && cp -R artifacts/movienet/dist dist; else rm -rf ../../dist && cp -R dist ../../dist; fi",
+  "buildCommand": "ROOT=$(pnpm -w exec pwd) && pnpm -w run typecheck:libs && pnpm --filter @workspace/movienet run build && rm -rf \"$ROOT/dist\" && cp -R \"$ROOT/artifacts/movienet/dist\" \"$ROOT/dist\"",
   "framework": null,
   "functions": {
     "api/[...path].ts": {
