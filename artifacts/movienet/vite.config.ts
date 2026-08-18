@@ -46,8 +46,6 @@ export default defineConfig({
   },
   root: path.resolve(__dirname),
   build: {
-    // Vercel's Root Directory is artifacts/movienet, so its configured
-    // Output Directory "dist" must be created inside this artifact.
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
   },
