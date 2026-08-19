@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { getTrendingAll } from "../lib/tmdb";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.get("/trending", async (req, res): Promise<void> => {
   try {
