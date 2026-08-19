@@ -1,11 +1,11 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import {
   getMovies, getTrendingMoviesList, getMovieDetail,
 } from "../lib/tmdb";
 
 const router = Router();
 
-router.get("/movies", async (req, res): Promise<void> => {
+router.get("/movies", async (req: Request, res: Response): Promise<void> => {
   try {
     const { genre, search, page, sort } = req.query as Record<string, string>;
     const result = await getMovies({
@@ -21,7 +21,7 @@ router.get("/movies", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/movies/trending", async (req, res): Promise<void> => {
+router.get("/movies/trending", async (req: Request, res: Response): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
     const result = await getTrendingMoviesList(limit);
@@ -32,7 +32,7 @@ router.get("/movies/trending", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/movies/:id", async (req, res): Promise<void> => {
+router.get("/movies/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const result = await getMovieDetail(raw);
