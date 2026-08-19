@@ -55,7 +55,7 @@ export async function getYtsLinks(
 
     if (!res.ok) return [];
 
-    const data = await res.json();
+    const data: any = await res.json();
     const movies: any[] = data?.data?.movies ?? [];
     if (!movies.length) return [];
 
