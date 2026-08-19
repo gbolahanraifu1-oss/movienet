@@ -1,9 +1,9 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { searchAll, getGenreList } from "../lib/tmdb";
 
 const router = Router();
 
-router.get("/search", async (req, res): Promise<void> => {
+router.get("/search", async (req: Request, res: Response): Promise<void> => {
   try {
     const { q, type, page } = req.query as Record<string, string>;
     if (!q) {
@@ -18,7 +18,7 @@ router.get("/search", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/genres", async (req, res): Promise<void> => {
+router.get("/genres", async (req: Request, res: Response): Promise<void> => {
   try {
     const genres = await getGenreList();
     res.json(genres);
