@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { clerkMiddleware } from "@clerk/express";
 import pinoHttp from "pino-http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import router from "./routes";
@@ -35,6 +36,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Populate Clerk auth context before protected API routes run.
+app.use(clerkMiddleware());
 app.use("/api", router);
 
 export default app;
