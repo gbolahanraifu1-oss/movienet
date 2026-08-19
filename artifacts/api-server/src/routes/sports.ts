@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { getSportsEventsList, getLiveScoresList, getSportsNewsList } from "../lib/sports";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.get("/sports/events", async (req, res): Promise<void> => {
   try {
