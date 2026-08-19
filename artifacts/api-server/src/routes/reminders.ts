@@ -5,18 +5,23 @@ import { db, remindersTable } from "@workspace/db";
 
 const router = Router();
 
-function requireAuth(req: any, res: any, next: any) {
+type AuthenticatedRequest = Request & {
+  userId: string;
+  log: any;
+};
+
+function requireAuth(req: Request, res: Response, next: () => void) {
   const auth = getAuth(req);
   const userId = auth?.userId;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  req.userId = userId;
+  (req as AuthenticatedRequest).userId = userId;
   next();
 }
 
-router.get("/reminders", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const reminders = await db
       .select()
@@ -32,7 +37,7 @@ router.get("/reminders", requireAuth, async (req: Request, res: Response): Promi
   }
 });
 
-router.post("/reminders", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.post("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { contentId, contentType, contentTitle, posterUrl, releaseDate } = req.body;
     if (!contentId || !contentType || !contentTitle || !releaseDate) {
@@ -57,7 +62,7 @@ router.post("/reminders", requireAuth, async (req: Request, res: Response): Prom
   }
 });
 
-router.delete("/reminders/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.delete("/reminders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const id = parseInt(rawId, 10);
