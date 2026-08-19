@@ -1,11 +1,11 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import {
   getAnimeList, getTrendingAnimeList, getAnimeDetail,
 } from "../lib/tmdb";
 
 const router = Router();
 
-router.get("/anime", async (req, res): Promise<void> => {
+router.get("/anime", async (req: Request, res: Response): Promise<void> => {
   try {
     const { genre, search, page, sort } = req.query as Record<string, string>;
     const result = await getAnimeList({
@@ -21,7 +21,7 @@ router.get("/anime", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/anime/trending", async (req, res): Promise<void> => {
+router.get("/anime/trending", async (req: Request, res: Response): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
     const result = await getTrendingAnimeList(limit);
@@ -32,7 +32,7 @@ router.get("/anime/trending", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/anime/:id", async (req, res): Promise<void> => {
+router.get("/anime/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const result = await getAnimeDetail(raw);
