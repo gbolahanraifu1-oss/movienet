@@ -1,9 +1,9 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { eq, and } from "drizzle-orm";
 import { db, remindersTable } from "@workspace/db";
 
-const router: IRouter = Router();
+const router = Router();
 
 function requireAuth(req: any, res: any, next: any) {
   const auth = getAuth(req);
