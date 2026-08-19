@@ -1,9 +1,9 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { getSportsEventsList, getLiveScoresList, getSportsNewsList } from "../lib/sports";
 
 const router = Router();
 
-router.get("/sports/events", async (req, res): Promise<void> => {
+router.get("/sports/events", async (req: Request, res: Response): Promise<void> => {
   try {
     const { league } = req.query as Record<string, string>;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
@@ -15,7 +15,7 @@ router.get("/sports/events", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/sports/scores", async (req, res): Promise<void> => {
+router.get("/sports/scores", async (req: Request, res: Response): Promise<void> => {
   try {
     const { league } = req.query as Record<string, string>;
     const result = await getLiveScoresList({ league });
@@ -26,7 +26,7 @@ router.get("/sports/scores", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/sports/news", async (req, res): Promise<void> => {
+router.get("/sports/news", async (req: Request, res: Response): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 10;
     const result = await getSportsNewsList(limit);
