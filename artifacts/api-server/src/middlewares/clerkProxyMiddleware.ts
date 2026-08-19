@@ -53,17 +53,21 @@ export function getClerkProxyHost(req: {
 }
 
 export function clerkProxyMiddleware(): RequestHandler {
+  const passThrough: RequestHandler = (_req, _res, next) => next();
+
   // Only run proxy in production — Clerk proxying doesn't work for dev instances
   if (process.env.NODE_ENV !== 'production') {
-    return (_req, _res, next) => next();
+    return passThrough;
   }
 
   const secretKey = process.env.CLERK_SECRET_KEY;
   if (!secretKey) {
-    return (_req, _res, next) => next();
+    return passThrough;
   }
 
-  return createProxyMiddleware({
+  // The installed middleware typings omit the target property from the
+  // inferred overload, although target is a supported runtime option.
+  return createProxyMiddleware(({
     target: CLERK_FAPI,
     changeOrigin: true,
     // Take over the response so it can be re-sent with a Content-Length (see
@@ -142,5 +146,5 @@ export function clerkProxyMiddleware(): RequestHandler {
         });
       },
     },
-  }) as RequestHandler;
+  } as any)) as RequestHandler;
 }
