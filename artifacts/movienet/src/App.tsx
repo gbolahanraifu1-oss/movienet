@@ -169,6 +169,14 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <Switch>
+          <Route path="/forgot-password">
+            <Redirect to="/sign-in/forgot-password" />
+          </Route>
+          <Route path="/reset-password">
+            <Redirect to="/sign-in/reset-password" />
+          </Route>
+          {/* Clerk owns the complete sign-in flow, including verification,
+              forgot-password, and reset-password states. */}
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
           
