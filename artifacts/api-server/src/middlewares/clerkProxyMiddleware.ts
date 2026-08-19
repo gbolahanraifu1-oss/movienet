@@ -20,7 +20,7 @@
  */
 
 import type { ClientRequest, IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'http';
-import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const CLERK_FAPI = 'https://frontend-api.clerk.dev';
@@ -53,7 +53,7 @@ export function getClerkProxyHost(req: {
 }
 
 export function clerkProxyMiddleware(): RequestHandler {
-  const passThrough: RequestHandler = (_req: Request, _res: Response, next: NextFunction) => next();
+  const passThrough: RequestHandler = (_req: Request, _res: Response, next: () => void) => next();
 
   // Only run proxy in production — Clerk proxying doesn't work for dev instances
   if (process.env.NODE_ENV !== 'production') {
