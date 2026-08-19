@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { logger } from "../lib/logger";
 
@@ -12,7 +12,7 @@ const contactSchema = z.object({
   category: z.enum(["general", "dmca", "bug", "partnership"]),
 });
 
-router.post("/contact", async (req, res) => {
+router.post("/contact", async (req: Request, res: Response) => {
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid form data", issues: parsed.error.flatten() });
