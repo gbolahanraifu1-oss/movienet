@@ -6,7 +6,11 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["./[...path].ts", "../artifacts/api-server/src/**/*.ts"]
+  "include": [
+    "./[...path].ts",
+    "../artifacts/api-server/src/**/*.ts"
+  ]
 }
