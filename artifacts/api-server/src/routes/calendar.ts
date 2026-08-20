@@ -1,9 +1,9 @@
-import { Router, type Request, type Response } from "express";
+import { Router } from "express";
 import { getUpcomingMovies } from "../lib/tmdb";
 
 const router = Router();
 
-router.get("/calendar", async (req: Request, res: Response): Promise<void> => {
+router.get("/calendar", async (req: any, res: any): Promise<void> => {
   try {
     const { type } = req.query as Record<string, string>;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 30;
