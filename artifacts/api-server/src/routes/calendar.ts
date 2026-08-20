@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUpcomingMovies } from "../lib/tmdb";
+import { getUpcomingMovies } from "../lib/tmdb.js";
 
 const router = Router();
 
