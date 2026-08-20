@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   getMovies, getTrendingMoviesList, getMovieDetail,
-} from "../lib/tmdb";
+} from "../lib/tmdb.js";
 
 const router = Router();
 
