@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getSportsEventsList, getLiveScoresList, getSportsNewsList } from "../lib/sports";
+import { getSportsEventsList, getLiveScoresList, getSportsNewsList } from "../lib/sports.js";
 
 const router = Router();
 
