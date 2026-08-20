@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { searchAll, getGenreList } from "../lib/tmdb";
+import { searchAll, getGenreList } from "../lib/tmdb.js";
 
 const router = Router();
 
