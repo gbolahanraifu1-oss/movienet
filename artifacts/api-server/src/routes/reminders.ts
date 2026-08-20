@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { eq, and } from "drizzle-orm";
 import { db, remindersTable } from "@workspace/db";
@@ -17,11 +17,11 @@ function requireAuth(req: Request, res: Response, next: () => void) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  (req as AuthenticatedRequest).userId = userId;
+  req.userId = userId;
   next();
 }
 
-router.get("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.get("/reminders", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
     const reminders = await db
       .select()
@@ -37,7 +37,7 @@ router.get("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Res
   }
 });
 
-router.post("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post("/reminders", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
     const { contentId, contentType, contentTitle, posterUrl, releaseDate } = req.body;
     if (!contentId || !contentType || !contentTitle || !releaseDate) {
@@ -62,7 +62,7 @@ router.post("/reminders", requireAuth, async (req: AuthenticatedRequest, res: Re
   }
 });
 
-router.delete("/reminders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.delete("/reminders/:id", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const id = parseInt(rawId, 10);
