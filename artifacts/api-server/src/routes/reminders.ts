@@ -1,16 +1,10 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
-import { eq, and } from "drizzle-orm";
-import { db, remindersTable } from "@workspace/db";
+import { and, db, eq, remindersTable } from "@workspace/db";
 
 const router = Router();
 
-type AuthenticatedRequest = Request & {
-  userId: string;
-  log: any;
-};
-
-function requireAuth(req: Request, res: Response, next: () => void) {
+function requireAuth(req: any, res: any, next: any) {
   const auth = getAuth(req);
   const userId = auth?.userId;
   if (!userId) {
