@@ -3,7 +3,7 @@ import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
 import pinoHttp from "pino-http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import router from "./routes";
+import router from "./routes/index";
 import { logger } from "./lib/logger";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
 
