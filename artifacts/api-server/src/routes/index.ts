@@ -1,13 +1,13 @@
 import { Router } from "express";
-import animeRouter from "./anime";
-import calendarRouter from "./calendar";
-import contactRouter from "./contact";
-import healthRouter from "./health";
-import moviesRouter from "./movies";
-import remindersRouter from "./reminders";
-import searchRouter from "./search";
-import sportsRouter from "./sports";
-import trendingRouter from "./trending";
+import animeRouter from "./anime.js";
+import calendarRouter from "./calendar.js";
+import contactRouter from "./contact.js";
+import healthRouter from "./health.js";
+import moviesRouter from "./movies.js";
+import remindersRouter from "./reminders.js";
+import searchRouter from "./search.js";
+import sportsRouter from "./sports.js";
+import trendingRouter from "./trending.js";
 
 const router = Router();
 
