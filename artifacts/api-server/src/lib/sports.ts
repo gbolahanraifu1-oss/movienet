@@ -2,7 +2,11 @@
 const SPORTS_BASE = "https://www.thesportsdb.com/api/v1/json/3";
 
 async function sportsFetch(endpoint: string): Promise<any> {
-  const res = await fetch(`${SPORTS_BASE}${endpoint}`);
+  const res = (await fetch(`${SPORTS_BASE}${endpoint}`)) as unknown as {
+    ok: boolean;
+    status: number;
+    json: () => Promise<any>;
+  };
   if (!res.ok) throw new Error(`Sports API error ${res.status}`);
   return res.json();
 }
