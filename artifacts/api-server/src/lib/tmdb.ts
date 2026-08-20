@@ -1,4 +1,4 @@
-import { getYtsLinks } from "./yts";
+import { getYtsLinks } from "./yts.js";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
