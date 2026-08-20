@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
@@ -15,4 +16,5 @@ if (!databaseUrl) {
 export const pool = new Pool({ connectionString: databaseUrl });
 export const db = drizzle(pool, { schema });
 
+export { and, eq };
 export * from "./schema";
