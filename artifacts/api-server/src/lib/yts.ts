@@ -45,13 +45,16 @@ export async function getYtsLinks(
     const query = year ? `${title} ${year}` : title;
     const url = `${YTS_API}?query_term=${encodeURIComponent(query)}&limit=5&sort_by=seeds`;
 
-    const res = await fetch(url, {
+    const res = (await fetch(url, {
       headers: {
         "User-Agent": UA,
         Accept: "application/json",
       },
       signal: AbortSignal.timeout(8000),
-    });
+    })) as unknown as {
+      ok: boolean;
+      json: () => Promise<any>;
+    };
 
     if (!res.ok) return [];
 
