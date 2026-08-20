@@ -1,9 +1,9 @@
-import { Router, type Request, type Response } from "express";
+import { Router } from "express";
 import { getTrendingAll } from "../lib/tmdb";
 
 const router = Router();
 
-router.get("/trending", async (req: Request, res: Response): Promise<void> => {
+router.get("/trending", async (req: any, res: any): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 40;
     const result = await getTrendingAll(limit);
