@@ -3,9 +3,9 @@ import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
 import pinoHttp from "pino-http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import router from "./routes/index";
-import { logger } from "./lib/logger";
-import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
+import router from "./routes/index.js";
+import { logger } from "./lib/logger.js";
+import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
 
 const app = express();
 
