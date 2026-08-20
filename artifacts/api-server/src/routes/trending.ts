@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getTrendingAll } from "../lib/tmdb";
+import { getTrendingAll } from "../lib/tmdb.js";
 
 const router = Router();
 
