@@ -21,7 +21,11 @@ async function tmdbFetch(endpoint: string, params: Record<string, string | numbe
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url.toString());
+  const res = (await fetch(url.toString())) as unknown as {
+    ok: boolean;
+    status: number;
+    json: () => Promise<any>;
+  };
   if (!res.ok) throw new Error(`TMDB error ${res.status}: ${endpoint}`);
   return res.json();
 }
