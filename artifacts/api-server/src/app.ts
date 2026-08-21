@@ -37,7 +37,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Populate Clerk auth context before protected API routes run.
-app.use(clerkMiddleware());
+const clerkPublishableKey =
+  process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
+app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 app.use("/api", router);
 
 export default app;
