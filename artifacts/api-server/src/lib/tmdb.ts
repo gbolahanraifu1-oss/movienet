@@ -2,7 +2,7 @@ import { getYtsLinks } from "./yts.js";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
-const API_KEY = process.env.TMDB_API_KEY || "";
+const API_KEY = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || "";
 
 export function posterUrl(path: string | null | undefined, size = "w500"): string | null {
   if (!path) return null;
@@ -115,7 +115,10 @@ export async function getMovies(params: {
     const searched = params.search
       ? filtered.filter(m => m.title.toLowerCase().includes(params.search!.toLowerCase()))
       : filtered;
-    return { items: searched, total: searched.length, page: 1, totalPages: 1 };
+    const page = params.page || 1;
+    const pageSize = 20;
+    const start = (page - 1) * pageSize;
+    return { items: searched.slice(start, start + pageSize), total: searched.length, page, totalPages: Math.max(1, Math.ceil(searched.length / pageSize)) };
   }
 }
 
@@ -183,7 +186,10 @@ export async function getAnimeList(params: {
     const searched = params.search
       ? filtered.filter(a => a.title.toLowerCase().includes(params.search!.toLowerCase()))
       : filtered;
-    return { items: searched, total: searched.length, page: 1, totalPages: 1 };
+    const page = params.page || 1;
+    const pageSize = 20;
+    const start = (page - 1) * pageSize;
+    return { items: searched.slice(start, start + pageSize), total: searched.length, page, totalPages: Math.max(1, Math.ceil(searched.length / pageSize)) };
   }
 }
 
