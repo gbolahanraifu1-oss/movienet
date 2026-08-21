@@ -116,6 +116,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
+                    <Link href="/profile" className="cursor-pointer">Profile settings</Link>
+                    </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/subscription" className="cursor-pointer">Subscription</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
