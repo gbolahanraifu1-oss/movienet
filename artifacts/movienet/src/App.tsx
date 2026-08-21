@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, UserProfile, Show, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
@@ -134,6 +134,14 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function ProfilePage() {
+  return (
+    <div className="container mx-auto px-4 py-10 flex justify-center">
+      <UserProfile routing="path" path={`${basePath}/profile`} />
+    </div>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -179,6 +187,7 @@ function ClerkProviderWithRoutes() {
               forgot-password, and reset-password states. */}
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
+          <Route path="/profile/*?" component={ProfilePage} />
           
           <Route>
             <Layout>
