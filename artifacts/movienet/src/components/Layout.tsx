@@ -89,9 +89,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <Show when="signed-out">
-              <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-lg shadow-primary/20 rounded-full transition-all hover:scale-105 active:scale-95">
-                <Link href="/sign-in">Sign In</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" asChild className="text-zinc-200 hover:text-white"><Link href="/sign-in">Sign In</Link></Button>
+                <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-5 shadow-lg shadow-primary/20 rounded-full transition-all hover:scale-105 active:scale-95"><Link href="/sign-up">Sign Up</Link></Button>
+              </div>
             </Show>
 
             <Show when="signed-in">
