@@ -103,6 +103,7 @@ export function Anime() {
             {Array(10).fill(0).map((_, i) => <ContentCardSkeleton key={i} />)}
           </div>
         ) : data?.items?.length ? (
+          <>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
             {data.items.map((item) => (
               <ContentCard key={item.id} item={item} />
@@ -115,6 +116,7 @@ export function Anime() {
               <Button variant="outline" disabled={page >= data.totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
             </div>
           )}
+          </>
         ) : (
           <div className="py-20 text-center flex flex-col items-center justify-center text-zinc-500">
             <Search className="w-12 h-12 mb-4 opacity-20" />
