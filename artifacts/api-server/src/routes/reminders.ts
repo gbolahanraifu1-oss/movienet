@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
-import { and, db, eq, remindersTable } from "@workspace/db";
-
 const router = Router();
+
+let dbModulePromise: Promise<typeof import("@workspace/db")> | undefined;
+
+function getDb() {
+  return (dbModulePromise ??= import("@workspace/db"));
+}
 
 function requireAuth(req: any, res: any, next: any) {
   const auth = getAuth(req);
@@ -17,6 +21,7 @@ function requireAuth(req: any, res: any, next: any) {
 
 router.get("/reminders", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
+    const { db, eq, remindersTable } = await getDb();
     const reminders = await db
       .select()
       .from(remindersTable)
@@ -33,6 +38,7 @@ router.get("/reminders", requireAuth, async (req: any, res: any): Promise<void> 
 
 router.post("/reminders", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
+    const { db, remindersTable } = await getDb();
     const { contentId, contentType, contentTitle, posterUrl, releaseDate } = req.body;
     if (!contentId || !contentType || !contentTitle || !releaseDate) {
       res.status(400).json({ error: "Missing required fields" });
@@ -58,6 +64,7 @@ router.post("/reminders", requireAuth, async (req: any, res: any): Promise<void>
 
 router.delete("/reminders/:id", requireAuth, async (req: any, res: any): Promise<void> => {
   try {
+    const { db, and, eq, remindersTable } = await getDb();
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const id = parseInt(rawId, 10);
     const [deleted] = await db
