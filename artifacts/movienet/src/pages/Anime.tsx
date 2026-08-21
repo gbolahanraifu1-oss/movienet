@@ -17,6 +17,7 @@ export function Anime() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [genre, setGenre] = useState<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
   const [sort, setSort] = useState<any>("popular");
 
   useEffect(() => {
@@ -26,9 +27,12 @@ export function Anime() {
 
   // Use anime genres if api supported it, but fallback to general genres list for now
   const { data: genresData } = useListGenres();
+
+  useEffect(() => { setPage(1); }, [genre, debouncedSearch, sort]);
   const { data, isLoading } = useListAnime({ 
     search: debouncedSearch || undefined, 
-    genre, 
+    genre,
+    page,
     sort 
   });
 
@@ -104,6 +108,13 @@ export function Anime() {
               <ContentCard key={item.id} item={item} />
             ))}
           </div>
+          {!!data?.totalPages && data.totalPages > 1 && (
+            <div className="mt-10 flex items-center justify-center gap-3">
+              <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <span className="text-sm text-zinc-400">Page {data.page} of {data.totalPages}</span>
+              <Button variant="outline" disabled={page >= data.totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          )}
         ) : (
           <div className="py-20 text-center flex flex-col items-center justify-center text-zinc-500">
             <Search className="w-12 h-12 mb-4 opacity-20" />
