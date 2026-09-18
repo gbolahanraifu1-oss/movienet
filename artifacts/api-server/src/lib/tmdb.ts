@@ -132,6 +132,23 @@ export async function getTrendingMoviesList(limit = 20) {
 }
 
 export async function getMovieDetail(id: string) {
+  // Mock list items use stable non-TMDB ids. Resolve those locally instead of
+  // sending an invalid id to TMDB and risking a failed detail request.
+  const mock = getMockMovies().find((movie) => movie.id === id);
+  if (mock) {
+    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
+    return {
+      ...mock,
+      trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      runtime: 148,
+      status: "Released",
+      tagline: "An epic adventure awaits.",
+      cast: getMockCast(),
+      similar: getMockMovies().slice(0, 6),
+      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "movie"),
+    };
+  }
+
   try {
     const data = await tmdbFetch(`/movie/${id}`, {
       append_to_response: "videos,credits,similar,recommendations",
