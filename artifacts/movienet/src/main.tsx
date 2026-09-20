@@ -5,10 +5,9 @@ import { setBaseUrl } from '@workspace/api-client-react';
 
 import './index.css';
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_URL ||
-  'https://movienet-api-server-om8520qxn-vk911tech.vercel.app';
-
-setBaseUrl(apiBaseUrl);
+// Use the deployed site's same-origin Vercel function. The previous fallback
+// pointed at a separate protected deployment that redirects browser requests
+// to Vercel SSO, leaving movie and genre queries empty.
+setBaseUrl(null);
 
 createRoot(document.getElementById('root')!).render(<App />);
