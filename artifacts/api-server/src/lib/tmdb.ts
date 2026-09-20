@@ -6,7 +6,7 @@ const API_KEY = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || "";
 
 async function getYtsLinksSafe(title: string, year?: number | null) {
   try {
-    return await getYtsLinksSafe(title, year);
+    return await getYtsLinks(title, year);
   } catch {
     return [];
   }
@@ -231,6 +231,22 @@ export async function getTrendingAnimeList(limit = 20) {
 }
 
 export async function getAnimeDetail(id: string) {
+  const normalizedId = decodeURIComponent(String(id)).trim();
+  const localAnime = getMockAnime().find((anime) => anime.id === normalizedId);
+  if (localAnime) {
+    const yts = localAnime.isReleased ? await getYtsLinksSafe(localAnime.title, localAnime.year) : [];
+    return {
+      ...localAnime,
+      trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      runtime: 24,
+      status: "Returning Series",
+      tagline: "The legend continues.",
+      cast: getMockCast(),
+      similar: getMockAnime().slice(0, 6),
+      downloadLinks: yts.length ? yts : generateDownloadLinks(localAnime.title, "anime"),
+    };
+  }
+
   try {
     const data = await tmdbFetch(`/tv/${id}`, {
       append_to_response: "videos,credits,similar,recommendations",
@@ -417,7 +433,7 @@ function generateDownloadLinks(title: string, _type: "movie" | "anime") {
 }
 
 // ─────────────────────────────────────────────
-// Mock data — used when TMDB_API_KEY is not set
+// Mock data �� used when TMDB_API_KEY is not set
 // ─────────────────────────────────────────────
 
 function getMockMovies() {

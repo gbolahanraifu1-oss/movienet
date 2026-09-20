@@ -42,9 +42,13 @@ export async function getSportsEventsList(params: { league?: string; limit?: num
     const events = responses.flat().sort(
       (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
     );
-    return (events.length ? events : mockEvents)
-      .filter((event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase())
-      .slice(0, limit);
+    const filteredEvents = events.filter(
+      (event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase(),
+    );
+    const fallbackEvents = mockEvents.filter(
+      (event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase(),
+    );
+    return (filteredEvents.length ? filteredEvents : fallbackEvents).slice(0, limit);
   } catch {
     return mockEvents
       .filter((event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase())
