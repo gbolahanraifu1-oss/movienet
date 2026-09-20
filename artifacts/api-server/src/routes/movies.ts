@@ -35,7 +35,7 @@ router.get("/movies/trending", async (req: any, res: any): Promise<void> => {
 router.get("/movies/:id", async (req: any, res: any): Promise<void> => {
   try {
     const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const result = await getMovieDetail(raw);
+    const result = await getMovieDetail(String(raw));
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to get movie");

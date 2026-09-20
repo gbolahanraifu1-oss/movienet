@@ -28,14 +28,27 @@ function getLeagueId(league?: string): string | undefined {
 
 export async function getSportsEventsList(params: { league?: string; limit?: number }) {
   const limit = params.limit || 20;
+  const mockEvents = getMockSportsEvents();
   try {
-    const leagueId = params.league ? getLeagueId(params.league) : LEAGUES[0].id;
-    const id = leagueId || LEAGUES[0].id;
-    const data = await sportsFetch(`/eventsnextleague.php?id=${id}`);
-    const events = (data.events || []).slice(0, limit);
-    return events.map((e: any) => formatEvent(e));
+    const leagues = params.league
+      ? LEAGUES.filter((league) => league.name.toLowerCase() === params.league!.toLowerCase())
+      : LEAGUES;
+    const responses = await Promise.all(
+      leagues.map(async (league) => {
+        const data = await sportsFetch(`/eventsnextleague.php?id=${league.id}`);
+        return (data.events || []).map((event: any) => formatEvent(event));
+      }),
+    );
+    const events = responses.flat().sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
+    return (events.length ? events : mockEvents)
+      .filter((event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase())
+      .slice(0, limit);
   } catch {
-    return getMockSportsEvents().slice(0, limit);
+    return mockEvents
+      .filter((event) => !params.league || event.league.toLowerCase() === params.league!.toLowerCase())
+      .slice(0, limit);
   }
 }
 

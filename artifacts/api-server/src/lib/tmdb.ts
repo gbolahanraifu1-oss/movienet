@@ -4,6 +4,14 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const API_KEY = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || "";
 
+async function getYtsLinksSafe(title: string, year?: number | null) {
+  try {
+    return await getYtsLinksSafe(title, year);
+  } catch {
+    return [];
+  }
+}
+
 export function posterUrl(path: string | null | undefined, size = "w500"): string | null {
   if (!path) return null;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
@@ -132,11 +140,12 @@ export async function getTrendingMoviesList(limit = 20) {
 }
 
 export async function getMovieDetail(id: string) {
+  const normalizedId = decodeURIComponent(String(id)).trim();
   // Mock list items use stable non-TMDB ids. Resolve those locally instead of
   // sending an invalid id to TMDB and risking a failed detail request.
-  const mock = getMockMovies().find((movie) => movie.id === id);
+  const mock = getMockMovies().find((movie) => movie.id === normalizedId);
   if (mock) {
-    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
+    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -156,13 +165,13 @@ export async function getMovieDetail(id: string) {
     const detail = formatMovieDetail(data, "movie");
     // Enrich with real YTS download links
     if (detail.isReleased) {
-      const yts = await getYtsLinks(detail.title, detail.year);
+      const yts = await getYtsLinksSafe(detail.title, detail.year);
       if (yts.length) detail.downloadLinks = yts;
     }
     return detail;
   } catch {
     const mock = getMockMovies().find(m => m.id === id) || getMockMovies()[0];
-    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
+    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -229,13 +238,13 @@ export async function getAnimeDetail(id: string) {
     const detail = formatMovieDetail(data, "anime");
     // Try YTS for anime movies; most series won't match but it's worth trying
     if (detail.isReleased) {
-      const yts = await getYtsLinks(detail.title, detail.year);
+      const yts = await getYtsLinksSafe(detail.title, detail.year);
       if (yts.length) detail.downloadLinks = yts;
     }
     return detail;
   } catch {
     const mock = getMockAnime().find(a => a.id === id) || getMockAnime()[0];
-    const yts = mock.isReleased ? await getYtsLinks(mock.title, mock.year) : [];
+    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
