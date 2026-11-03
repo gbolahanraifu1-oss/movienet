@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, UserProfile, Show, useClerk } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, UserProfile, Show, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
@@ -190,30 +190,35 @@ function ClerkProviderWithRoutes() {
           <Route path="/profile/*?" component={ProfilePage} />
           
           <Route>
-            <Layout>
-              <Switch>
-                <Route path="/" component={Home} />
-                <Route path="/movies" component={Movies} />
-                <Route path="/anime" component={Anime} />
-                <Route path="/sports" component={Sports} />
-                <Route path="/trending" component={Trending} />
-                <Route path="/browse" component={Browse} />
-                <Route path="/title/:type/:id">
-                  {(params) => <TitleDetail type={params.type as any} id={params.id} />}
-                </Route>
-                <Route path="/calendar" component={Calendar} />
-                <Route path="/subscription" component={Subscription} />
-                <Route path="/download" component={DownloadPage} />
-                <Route path="/about" component={About} />
-                <Route path="/contact" component={Contact} />
-                <Route>
-                  <div className="flex min-h-[50vh] flex-col items-center justify-center text-center px-4">
-                    <h1 className="text-4xl font-display font-bold text-foreground mb-4">404 - Not Found</h1>
-                    <p className="text-muted-foreground max-w-md">The page you're looking for doesn't exist or has been moved.</p>
-                  </div>
-                </Route>
-              </Switch>
-            </Layout>
+            <Show when="signed-in">
+              <Layout>
+                <Switch>
+                  <Route path="/" component={Home} />
+                  <Route path="/movies" component={Movies} />
+                  <Route path="/anime" component={Anime} />
+                  <Route path="/sports" component={Sports} />
+                  <Route path="/trending" component={Trending} />
+                  <Route path="/browse" component={Browse} />
+                  <Route path="/title/:type/:id">
+                    {(params) => <TitleDetail type={params.type as any} id={params.id} />}
+                  </Route>
+                  <Route path="/calendar" component={Calendar} />
+                  <Route path="/subscription" component={Subscription} />
+                  <Route path="/download" component={DownloadPage} />
+                  <Route path="/about" component={About} />
+                  <Route path="/contact" component={Contact} />
+                  <Route>
+                    <div className="flex min-h-[50vh] flex-col items-center justify-center text-center px-4">
+                      <h1 className="text-4xl font-display font-bold text-foreground mb-4">404 - Not Found</h1>
+                      <p className="text-muted-foreground max-w-md">The page you&apos;re looking for doesn&apos;t exist or has been moved.</p>
+                    </div>
+                  </Route>
+                </Switch>
+              </Layout>
+            </Show>
+            <Show when="signed-out">
+              <Redirect to="/sign-in" />
+            </Show>
           </Route>
         </Switch>
         <Toaster />
