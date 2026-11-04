@@ -37,46 +37,54 @@ export interface YtsLink {
   peers: number;
 }
 
+async function fetchYtsMovies(query: string): Promise<any[]> {
+  const url = `${YTS_API}?query_term=${encodeURIComponent(query)}&limit=8&sort_by=seeds`;
+  const res = (await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "application/json",
+    },
+    signal: AbortSignal.timeout(8000),
+  })) as unknown as {
+    ok: boolean;
+    json: () => Promise<any>;
+  };
+  if (!res.ok) return [];
+  const data: any = await res.json();
+  return data?.data?.movies ?? [];
+}
+
 export async function getYtsLinks(
   title: string,
   year?: number | null
 ): Promise<YtsLink[]> {
   try {
-    const query = year ? `${title} ${year}` : title;
-    const url = `${YTS_API}?query_term=${encodeURIComponent(query)}&limit=5&sort_by=seeds`;
-
-    const res = (await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(8000),
-    })) as unknown as {
-      ok: boolean;
-      json: () => Promise<any>;
-    };
-
-    if (!res.ok) return [];
-
-    const data: any = await res.json();
-    const movies: any[] = data?.data?.movies ?? [];
+    // Prefer title+year, then fall back to title-only if empty
+    let movies = await fetchYtsMovies(year ? `${title} ${year}` : title);
+    if (!movies.length && year) {
+      movies = await fetchYtsMovies(title);
+    }
     if (!movies.length) return [];
 
-    // Pick the closest title match
+    // Prefer exact title match, then same-year, else first result
     const target = normalise(title);
     const match =
-      movies.find((m) => normalise(m.title ?? "") === target) ?? movies[0];
+      movies.find((m) => normalise(m.title ?? "") === target && (!year || m.year === year)) ??
+      movies.find((m) => normalise(m.title ?? "") === target) ??
+      movies.find((m) => year && m.year === year) ??
+      movies[0];
 
     const torrents: any[] = match?.torrents ?? [];
     if (!torrents.length) return [];
 
-    // Sort by preferred quality order
     const order: Record<string, number> = {
       "2160p": 0,
       "1080p": 1,
       "720p": 2,
       "480p": 3,
     };
+
+    const pageUrl: string = match.url || `https://yts.mx/browse-movies/${encodeURIComponent(title)}`;
 
     return torrents
       .sort(
@@ -86,9 +94,10 @@ export async function getYtsLinks(
       .map((t) => ({
         quality: t.quality === "2160p" ? "4K UHD" : t.quality,
         size: t.size ?? "Unknown",
-        format: [t.video_codec ?? "x264", t.audio_channels ?? ""].filter(Boolean).join(" "),
-        url: t.url ?? "",
-        magnet: buildMagnet(t.hash, match.title_long ?? title),
+        format: [t.video_codec ?? "x264", t.audio_channels ?? ""].filter(Boolean).join(" ") || "MKV",
+        // Prefer direct .torrent; if missing, fall back to the YTS movie page
+        url: t.url || pageUrl,
+        magnet: t.hash ? buildMagnet(t.hash, match.title_long ?? title) : "",
         seeds: t.seeds ?? 0,
         peers: t.peers ?? 0,
       }));
