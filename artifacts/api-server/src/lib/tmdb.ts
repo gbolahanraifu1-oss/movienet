@@ -468,21 +468,26 @@ function formatCalendarEntry(m: TmdbMovie, type: "movie" | "anime") {
 }
 
 function generateDownloadLinks(title: string, type: "movie" | "anime") {
-  const slug = encodeURIComponent(title);
-  // Placeholder sizes until real torrent metadata is available.
-  // Movies: feature-length packs. Anime: per-episode oriented sizes.
+  // Fallback when YTS API returns nothing. Point at a real YTS *search*
+  // page (browse-movies), not the invalid /movies/{Title} path.
+  const q = encodeURIComponent(title.trim());
+  const ytsBrowse = `https://yts.mx/browse-movies/${q}/all/all/0/latest/0/all`;
+  const ytsSearch = `https://yts.mx/browse-movies/${q}`;
+
   if (type === "anime") {
+    // Series: no reliable YTS packs — send users to search; sizes are per-ep estimates
     return [
-      { quality: "1080p", size: "~350–450 MB / ep", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-      { quality: "720p", size: "~150–250 MB / ep", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-      { quality: "480p", size: "~80–120 MB / ep", format: "MP4", url: `https://yts.mx/movies/${slug}` },
+      { quality: "1080p", size: "~350–450 MB / ep", format: "MKV", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
+      { quality: "720p", size: "~150–250 MB / ep", format: "MKV", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
+      { quality: "480p", size: "~80–120 MB / ep", format: "MP4", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
     ];
   }
+
   return [
-    { quality: "2160p", size: "~8–14 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "1080p", size: "~1.8–3.2 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "720p", size: "~700 MB–1.4 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "480p", size: "~350–600 MB", format: "MP4", url: `https://yts.mx/movies/${slug}` },
+    { quality: "2160p", size: "~8–14 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
+    { quality: "1080p", size: "~1.8–3.2 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
+    { quality: "720p", size: "~700 MB–1.4 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
+    { quality: "480p", size: "~350–600 MB", format: "MP4", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
   ];
 }
 
