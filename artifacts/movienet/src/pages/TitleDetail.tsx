@@ -2,7 +2,8 @@ import { useGetMovie, useGetAnime, useCreateReminder, getGetMovieQueryKey, getGe
 import { useParams } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, Clock, CalendarIcon, Download, Bell, Play, Zap } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Star, Clock, CalendarIcon, Download, Bell, Play, Zap, ListVideo } from "lucide-react";
 import { Link } from "wouter";
 import { ContentCard } from "../components/ContentCard";
 import { AdSlot } from "../components/AdSlot";
@@ -12,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string }) {
   const { toast } = useToast();
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   
   // Conditionally fetch based on type
   const { data: movieData, isLoading: movieLoading } = useGetMovie(id, { query: { enabled: type === 'movie', queryKey: getGetMovieQueryKey(id) } });
@@ -21,6 +23,24 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
 
   const data = type === 'movie' ? movieData : animeData;
   const isLoading = type === 'movie' ? movieLoading : animeLoading;
+
+  // Anime seasons (extra fields from API; typed loosely until schema regen)
+  const seasons: Array<{
+    id: string;
+    name: string;
+    seasonNumber: number;
+    episodeCount: number;
+    airDate?: string | null;
+    posterUrl?: string | null;
+  }> = (data as any)?.seasons ?? [];
+
+  const activeSeason = useMemo(() => {
+    if (!seasons.length) return null;
+    if (selectedSeason != null) {
+      return seasons.find((s) => s.seasonNumber === selectedSeason) ?? seasons[0];
+    }
+    return seasons[0];
+  }, [seasons, selectedSeason]);
 
   if (isLoading) {
     return <div className="min-h-[80vh] flex items-center justify-center"><div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
@@ -200,8 +220,82 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
               </div>
             )}
 
-            {/* Downloads */}
-            {data.isReleased && data.downloadLinks && data.downloadLinks.length > 0 && (
+            {/* Anime / series: season + episode selection */}
+            {type === "anime" && seasons.length > 0 && (
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-2">
+                  <ListVideo className="w-5 h-5 text-primary" />
+                  <h3 className="text-lg font-bold font-display text-white">Seasons & Episodes</h3>
+                  {(data as any).numberOfSeasons != null && (
+                    <span className="text-xs text-zinc-500">
+                      {(data as any).numberOfSeasons} season{(data as any).numberOfSeasons === 1 ? "" : "s"}
+                      {(data as any).numberOfEpisodes != null ? ` · ${(data as any).numberOfEpisodes} eps` : ""}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {seasons.map((s) => {
+                    const active = (activeSeason?.seasonNumber ?? seasons[0].seasonNumber) === s.seasonNumber;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedSeason(s.seasonNumber)}
+                        className={
+                          active
+                            ? "px-3 py-1.5 rounded-full text-sm font-medium bg-primary text-primary-foreground"
+                            : "px-3 py-1.5 rounded-full text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-white/5"
+                        }
+                      >
+                        {s.name}
+                        <span className="ml-1.5 text-[10px] opacity-70">{s.episodeCount} ep</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeSeason && (
+                  <div>
+                    <p className="text-xs text-zinc-500 mb-3">
+                      Select an episode — download links are placeholders for now
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {Array.from({ length: activeSeason.episodeCount }, (_, i) => {
+                        const ep = i + 1;
+                        const params = new URLSearchParams({
+                          title: `${data.title} — S${String(activeSeason.seasonNumber).padStart(2, "0")}E${String(ep).padStart(2, "0")}`,
+                          quality: "1080p",
+                          size: "~350–450 MB / ep",
+                          format: "MKV",
+                          url: "",
+                          magnet: "",
+                          poster: data.posterUrl ?? "",
+                          back: `/title/${data.type}/${data.id}`,
+                          season: String(activeSeason.seasonNumber),
+                          episode: String(ep),
+                        });
+                        return (
+                          <Link
+                            key={ep}
+                            href={`/download?${params.toString()}`}
+                            className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-3 py-2.5 rounded-lg border border-white/5 transition-all group hover:border-primary/30"
+                          >
+                            <Play className="w-3.5 h-3.5 text-zinc-500 group-hover:text-primary shrink-0" />
+                            <span className="text-sm font-medium text-zinc-200 group-hover:text-white">
+                              Episode {ep}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Movies: quality download packs */}
+            {type === "movie" && data.isReleased && data.downloadLinks && data.downloadLinks.length > 0 && (
               <div className="mt-8">
                 <h3 className="text-lg font-bold font-display text-white mb-1">Downloads</h3>
                 <p className="text-xs text-zinc-500 mb-4">Opens in your torrent client (qBittorrent, uTorrent, etc.)</p>
