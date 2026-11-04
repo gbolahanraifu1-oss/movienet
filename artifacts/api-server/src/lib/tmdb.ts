@@ -58,6 +58,18 @@ export interface TmdbMovie {
   similar?: { results: TmdbMovie[] };
   recommendations?: { results: TmdbMovie[] };
   media_type?: string;
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+  episode_run_time?: number[];
+  seasons?: Array<{
+    id: number;
+    name: string;
+    season_number: number;
+    episode_count: number;
+    air_date?: string | null;
+    poster_path?: string | null;
+    overview?: string;
+  }>;
 }
 
 export interface TmdbVideo {
@@ -234,7 +246,6 @@ export async function getAnimeDetail(id: string) {
   const normalizedId = decodeURIComponent(String(id)).trim();
   const localAnime = getMockAnime().find((anime) => anime.id === normalizedId);
   if (localAnime) {
-    const yts = localAnime.isReleased ? await getYtsLinksSafe(localAnime.title, localAnime.year) : [];
     return {
       ...localAnime,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -243,7 +254,13 @@ export async function getAnimeDetail(id: string) {
       tagline: "The legend continues.",
       cast: getMockCast(),
       similar: getMockAnime().slice(0, 6),
-      downloadLinks: yts.length ? yts : generateDownloadLinks(localAnime.title, "anime"),
+      downloadLinks: [],
+      numberOfSeasons: 2,
+      numberOfEpisodes: 24,
+      seasons: [
+        { id: "s1", name: "Season 1", seasonNumber: 1, episodeCount: 12, airDate: null, posterUrl: localAnime.posterUrl, overview: null },
+        { id: "s2", name: "Season 2", seasonNumber: 2, episodeCount: 12, airDate: null, posterUrl: localAnime.posterUrl, overview: null },
+      ],
     };
   }
 
@@ -252,15 +269,11 @@ export async function getAnimeDetail(id: string) {
       append_to_response: "videos,credits,similar,recommendations",
     });
     const detail = formatMovieDetail(data, "anime");
-    // Try YTS for anime movies; most series won't match but it's worth trying
-    if (detail.isReleased) {
-      const yts = await getYtsLinksSafe(detail.title, detail.year);
-      if (yts.length) detail.downloadLinks = yts;
-    }
+    // Series use seasons/episodes UI — skip YTS movie packs for anime.
+    detail.downloadLinks = [];
     return detail;
   } catch {
     const mock = getMockAnime().find(a => a.id === id) || getMockAnime()[0];
-    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -269,7 +282,13 @@ export async function getAnimeDetail(id: string) {
       tagline: "The legend continues.",
       cast: getMockCast(),
       similar: getMockAnime().slice(0, 6),
-      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "anime"),
+      downloadLinks: [],
+      numberOfSeasons: 2,
+      numberOfEpisodes: 24,
+      seasons: [
+        { id: "s1", name: "Season 1", seasonNumber: 1, episodeCount: 12, airDate: null, posterUrl: mock.posterUrl, overview: null },
+        { id: "s2", name: "Season 2", seasonNumber: 2, episodeCount: 12, airDate: null, posterUrl: mock.posterUrl, overview: null },
+      ],
     };
   }
 }
@@ -379,6 +398,25 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
   const releaseDate = m.release_date || m.first_air_date || null;
   const isReleased = releaseDate ? new Date(releaseDate) <= new Date() : true;
   const genres = (m.genres || []).map((g) => g.name);
+  const episodeRuntime = m.episode_run_time?.[0] ?? null;
+  const runtime = type === "anime" ? (episodeRuntime ?? m.runtime ?? null) : (m.runtime || null);
+
+  // Season list for series/anime (skip season 0 specials when possible)
+  const seasons =
+    type === "anime" && Array.isArray(m.seasons)
+      ? m.seasons
+          .filter((s) => s.season_number > 0 && (s.episode_count ?? 0) > 0)
+          .map((s) => ({
+            id: String(s.id),
+            name: s.name || `Season ${s.season_number}`,
+            seasonNumber: s.season_number,
+            episodeCount: s.episode_count ?? 0,
+            airDate: s.air_date || null,
+            posterUrl: posterUrl(s.poster_path),
+            overview: s.overview || null,
+          }))
+      : [];
+
   return {
     id: String(m.id),
     type,
@@ -392,7 +430,7 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
     isReleased,
     releaseDate,
     trailerUrl: trailerUrl(m.videos),
-    runtime: m.runtime || null,
+    runtime,
     status: m.status || null,
     tagline: m.tagline || null,
     cast: (m.credits?.cast || []).slice(0, 15).map((c) => ({
@@ -403,7 +441,14 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
     similar: [...(m.similar?.results || []), ...(m.recommendations?.results || [])]
       .slice(0, 12)
       .map((s) => formatMovie(s, type)),
-    downloadLinks: isReleased ? generateDownloadLinks(m.title || m.name || "", type) : [],
+    // Movies: quality packs. Anime series: empty — UI uses seasons/episodes instead.
+    downloadLinks:
+      type === "movie" && isReleased
+        ? generateDownloadLinks(m.title || m.name || "", "movie")
+        : [],
+    numberOfSeasons: type === "anime" ? (m.number_of_seasons ?? seasons.length ?? null) : null,
+    numberOfEpisodes: type === "anime" ? (m.number_of_episodes ?? null) : null,
+    seasons,
   };
 }
 
@@ -422,13 +467,22 @@ function formatCalendarEntry(m: TmdbMovie, type: "movie" | "anime") {
   };
 }
 
-function generateDownloadLinks(title: string, _type: "movie" | "anime") {
+function generateDownloadLinks(title: string, type: "movie" | "anime") {
   const slug = encodeURIComponent(title);
+  // Placeholder sizes until real torrent metadata is available.
+  // Movies: feature-length packs. Anime: per-episode oriented sizes.
+  if (type === "anime") {
+    return [
+      { quality: "1080p", size: "~350–450 MB / ep", format: "MKV", url: `https://yts.mx/movies/${slug}` },
+      { quality: "720p", size: "~150–250 MB / ep", format: "MKV", url: `https://yts.mx/movies/${slug}` },
+      { quality: "480p", size: "~80–120 MB / ep", format: "MP4", url: `https://yts.mx/movies/${slug}` },
+    ];
+  }
   return [
-    { quality: "4K UHD", size: "~15 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "1080p", size: "~2.5 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "720p", size: "~1.2 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
-    { quality: "480p", size: "~600 MB", format: "MP4", url: `https://yts.mx/movies/${slug}` },
+    { quality: "2160p", size: "~8–14 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
+    { quality: "1080p", size: "~1.8–3.2 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
+    { quality: "720p", size: "~700 MB–1.4 GB", format: "MKV", url: `https://yts.mx/movies/${slug}` },
+    { quality: "480p", size: "~350–600 MB", format: "MP4", url: `https://yts.mx/movies/${slug}` },
   ];
 }
 
