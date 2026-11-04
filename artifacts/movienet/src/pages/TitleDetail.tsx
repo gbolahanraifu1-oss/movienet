@@ -361,3 +361,4 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
     </div>
   );
 }
+
