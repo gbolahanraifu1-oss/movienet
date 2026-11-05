@@ -1,10 +1,22 @@
 import { getYtsLinks } from "./yts.js";
+import { getCuriousMovieLinks, getCuriousTvLinks } from "./curious.js";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const API_KEY = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || "";
 
 async function getYtsLinksSafe(title: string, year?: number | null) {
+  try {
+    return await getYtsLinks(title, year);
+  } catch {
+    return [];
+  }
+}
+
+
+async function resolveMovieDownloads(title: string, year?: number | null, imdbId?: string | null) {
+  const curious = await getCuriousMovieLinks(title, year, imdbId);
+  if (curious.length) return curious;
   try {
     return await getYtsLinks(title, year);
   } catch {
@@ -157,7 +169,7 @@ export async function getMovieDetail(id: string) {
   // sending an invalid id to TMDB and risking a failed detail request.
   const mock = getMockMovies().find((movie) => movie.id === normalizedId);
   if (mock) {
-    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
+    const links = mock.isReleased ? await resolveMovieDownloads(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -166,24 +178,28 @@ export async function getMovieDetail(id: string) {
       tagline: "An epic adventure awaits.",
       cast: getMockCast(),
       similar: getMockMovies().slice(0, 6),
-      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "movie"),
+      downloadLinks: links.length ? links : generateDownloadLinks(mock.title, "movie"),
     };
   }
 
   try {
     const data = await tmdbFetch(`/movie/${id}`, {
-      append_to_response: "videos,credits,similar,recommendations",
+      append_to_response: "videos,credits,similar,recommendations,external_ids",
     });
     const detail = formatMovieDetail(data, "movie");
-    // Enrich with real YTS download links
+    // Prefer Curious Full Movie magnets; fall back to YTS then mock sizes
     if (detail.isReleased) {
-      const yts = await getYtsLinksSafe(detail.title, detail.year);
-      if (yts.length) detail.downloadLinks = yts;
+      const links = await resolveMovieDownloads(
+        detail.title,
+        detail.year,
+        (detail as any).imdbId
+      );
+      if (links.length) detail.downloadLinks = links;
     }
     return detail;
   } catch {
     const mock = getMockMovies().find(m => m.id === id) || getMockMovies()[0];
-    const yts = mock.isReleased ? await getYtsLinksSafe(mock.title, mock.year) : [];
+    const links = mock.isReleased ? await resolveMovieDownloads(mock.title, mock.year) : [];
     return {
       ...mock,
       trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -192,7 +208,7 @@ export async function getMovieDetail(id: string) {
       tagline: "An epic adventure awaits.",
       cast: getMockCast(),
       similar: getMockMovies().slice(0, 6),
-      downloadLinks: yts.length ? yts : generateDownloadLinks(mock.title, "movie"),
+      downloadLinks: links.length ? links : generateDownloadLinks(mock.title, "movie"),
     };
   }
 }
@@ -266,7 +282,7 @@ export async function getAnimeDetail(id: string) {
 
   try {
     const data = await tmdbFetch(`/tv/${id}`, {
-      append_to_response: "videos,credits,similar,recommendations",
+      append_to_response: "videos,credits,similar,recommendations,external_ids",
     });
     const detail = formatMovieDetail(data, "anime");
     // Series use seasons/episodes UI — skip YTS movie packs for anime.
@@ -379,8 +395,14 @@ function formatMultiSearchList(data: any) {
 function formatMovie(m: TmdbMovie, type: "movie" | "anime") {
   const releaseDate = m.release_date || m.first_air_date || null;
   const isReleased = releaseDate ? new Date(releaseDate) <= new Date() : true;
+  const imdbId =
+    (m as any).external_ids?.imdb_id ||
+    (m as any).imdb_id ||
+    null;
+
   return {
     id: String(m.id),
+    imdbId,
     type,
     title: m.title || m.name || "Unknown",
     posterUrl: posterUrl(m.poster_path),
