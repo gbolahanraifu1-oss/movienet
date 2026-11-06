@@ -1,5 +1,9 @@
 import { getYtsLinks } from "./yts.js";
 import { getCuriousMovieLinks, getCuriousTvLinks } from "./curious.js";
+import type { DirectDownload } from "./curious.js";
+
+/** Unified download row for title detail (streams or empty). */
+type DownloadLink = DirectDownload;
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -14,7 +18,11 @@ async function getYtsLinksSafe(title: string, year?: number | null) {
 }
 
 
-async function resolveMovieDownloads(title: string, year?: number | null, imdbId?: string | null) {
+async function resolveMovieDownloads(
+  title: string,
+  year?: number | null,
+  imdbId?: string | null
+): Promise<DownloadLink[]> {
   // Direct MP4 streams via Curious (not torrents)
   return getCuriousMovieLinks(title, year, imdbId);
 }
@@ -265,7 +273,7 @@ export async function getAnimeDetail(id: string) {
       tagline: "The legend continues.",
       cast: getMockCast(),
       similar: getMockAnime().slice(0, 6),
-      downloadLinks: [],
+      downloadLinks: [] as DownloadLink[],
       numberOfSeasons: 2,
       numberOfEpisodes: 24,
       seasons: [
@@ -293,7 +301,7 @@ export async function getAnimeDetail(id: string) {
       tagline: "The legend continues.",
       cast: getMockCast(),
       similar: getMockAnime().slice(0, 6),
-      downloadLinks: [],
+      downloadLinks: [] as DownloadLink[],
       numberOfSeasons: 2,
       numberOfEpisodes: 24,
       seasons: [
@@ -459,10 +467,11 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
       .slice(0, 12)
       .map((s) => formatMovie(s, type)),
     // Movies: quality packs. Anime series: empty — UI uses seasons/episodes instead.
-    downloadLinks:
+    downloadLinks: (
       type === "movie" && isReleased
         ? generateDownloadLinks(m.title || m.name || "", "movie")
-        : [],
+        : []
+    ) as DownloadLink[],
     numberOfSeasons: type === "anime" ? (m.number_of_seasons ?? seasons.length ?? null) : null,
     numberOfEpisodes: type === "anime" ? (m.number_of_episodes ?? null) : null,
     seasons,
@@ -484,12 +493,12 @@ function formatCalendarEntry(m: TmdbMovie, type: "movie" | "anime") {
   };
 }
 
-function generateDownloadLinks(title: string, type: "movie" | "anime") {
+function generateDownloadLinks(title: string, type: "movie" | "anime"): DownloadLink[] {
   // No fake torrent links — return empty so the UI hides the section
   // when real streams are unavailable.
   void title;
   void type;
-  return [];
+  return [] as DownloadLink[];
 }
 
 // ─────────────────────────────────────────────
