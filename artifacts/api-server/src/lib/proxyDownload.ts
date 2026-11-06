@@ -1,5 +1,4 @@
-import type { Express, Request, Response } from "express";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 
 const ALLOWED_HOST_SUFFIXES = [
   "hakunaymatata.com",
@@ -20,14 +19,16 @@ function hostAllowed(urlStr: string): boolean {
 }
 
 /**
- * Mount: registerProxyDownload(app)
- * Path: GET /api/proxy-download?url=&filename=
- * Forwards CDN MP4 with Referer so mobile browsers can save the file.
+ * Mount on the Express app.
+ * Path becomes: GET /api/proxy-download?url=&filename=
+ *
+ * Uses `any` for app/req/res to match the rest of api-server routes and avoid
+ * Express vs DOM Request/Response type clashes under tsconfig "types": ["node"].
  */
-export function registerProxyDownload(app: Express) {
-  app.get("/proxy-download", async (req: Request, res: Response) => {
-    const url = String(req.query.url || "");
-    const filename = String(req.query.filename || "video.mp4").replace(
+export function registerProxyDownload(app: any): void {
+  app.get("/proxy-download", async (req: any, res: any): Promise<void> => {
+    const url = String(req.query?.url || "");
+    const filename = String(req.query?.filename || "video.mp4").replace(
       /[^\w.\- ()[\]]+/g,
       "_"
     );
@@ -62,10 +63,11 @@ export function registerProxyDownload(app: Express) {
       if (contentLength) res.setHeader("Content-Length", contentLength);
       res.setHeader("Cache-Control", "private, no-store");
 
-      // Node 18+: web ReadableStream → Node stream
-      const nodeStream = Readable.fromWeb(upstream.body);
+      const nodeStream = Readable.fromWeb(
+        upstream.body as import("node:stream/web").ReadableStream
+      );
       nodeStream.pipe(res);
-    } catch (e) {
+    } catch {
       if (!res.headersSent) {
         res.status(502).json({ error: "Proxy download failed" });
       }
