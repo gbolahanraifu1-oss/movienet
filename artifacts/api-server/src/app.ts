@@ -6,11 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
-<<<<<<< HEAD
-import { registerProxyDownload } from "./routes/lib/proxyDownload.js";
-=======
 import { registerProxyDownload } from "./lib/proxyDownload.js";
->>>>>>> 2abb6600935762fa47001db541de35252e57061b
 
 
 

@@ -33,7 +33,8 @@ export function registerProxyDownload(app: Express) {
     );
 
     if (!url || !hostAllowed(url)) {
-      return res.status(400).json({ error: "Invalid or disallowed url" });
+      res.status(400).json({ error: "Invalid or disallowed url" });
+      return;
     }
 
     try {
@@ -47,7 +48,8 @@ export function registerProxyDownload(app: Express) {
       });
 
       if (!upstream.ok || !upstream.body) {
-        return res.status(upstream.status || 502).json({ error: "Upstream failed" });
+        res.status(upstream.status || 502).json({ error: "Upstream failed" });
+        return;
       }
 
       const contentType = upstream.headers.get("content-type") || "video/mp4";
@@ -61,7 +63,6 @@ export function registerProxyDownload(app: Express) {
       res.setHeader("Cache-Control", "private, no-store");
 
       // Node 18+: web ReadableStream → Node stream
-      // @ts-expect-error fromWeb exists on Node 18+
       const nodeStream = Readable.fromWeb(upstream.body);
       nodeStream.pipe(res);
     } catch (e) {

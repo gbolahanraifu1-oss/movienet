@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, UserProfile, Show, useAuth, useClerk } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, UserProfile, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
@@ -190,9 +190,8 @@ function ClerkProviderWithRoutes() {
           <Route path="/profile/*?" component={ProfilePage} />
           
           <Route>
-            <Show when="signed-in">
-              <Layout>
-                <Switch>
+            <Layout>
+              <Switch>
                   <Route path="/" component={Home} />
                   <Route path="/movies" component={Movies} />
                   <Route path="/anime" component={Anime} />
@@ -215,10 +214,6 @@ function ClerkProviderWithRoutes() {
                   </Route>
                 </Switch>
               </Layout>
-            </Show>
-            <Show when="signed-out">
-              <Redirect to="/sign-in" />
-            </Show>
           </Route>
         </Switch>
         <Toaster />
