@@ -1,4 +1,3 @@
-
 import { Readable } from "node:stream";
 
 const ALLOWED_HOST_SUFFIXES = [
@@ -58,7 +57,14 @@ export function registerProxyDownload(app: any): void {
       })) as unknown as FetchResponse;
 
       if (!upstream.ok || !upstream.body) {
-        res.status(upstream.status || 502).json({ error: "Upstream failed" });
+        const status = upstream.status || 502;
+        const error =
+          status === 429
+            ? "Source rate-limited. Try again in a minute or pick another quality."
+            : status === 403 || status === 401
+              ? "Link expired or blocked. Open the title again for a fresh link."
+              : `Upstream failed (${status})`;
+        res.status(status).json({ error });
         return;
       }
 
