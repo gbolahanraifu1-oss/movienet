@@ -15,13 +15,8 @@ async function getYtsLinksSafe(title: string, year?: number | null) {
 
 
 async function resolveMovieDownloads(title: string, year?: number | null, imdbId?: string | null) {
-  const curious = await getCuriousMovieLinks(title, year, imdbId);
-  if (curious.length) return curious;
-  try {
-    return await getYtsLinks(title, year);
-  } catch {
-    return [];
-  }
+  // Direct MP4 streams via Curious (not torrents)
+  return getCuriousMovieLinks(title, year, imdbId);
 }
 
 export function posterUrl(path: string | null | undefined, size = "w500"): string | null {
@@ -490,27 +485,11 @@ function formatCalendarEntry(m: TmdbMovie, type: "movie" | "anime") {
 }
 
 function generateDownloadLinks(title: string, type: "movie" | "anime") {
-  // Fallback when YTS API returns nothing. Point at a real YTS *search*
-  // page (browse-movies), not the invalid /movies/{Title} path.
-  const q = encodeURIComponent(title.trim());
-  const ytsBrowse = `https://yts.mx/browse-movies/${q}/all/all/0/latest/0/all`;
-  const ytsSearch = `https://yts.mx/browse-movies/${q}`;
-
-  if (type === "anime") {
-    // Series: no reliable YTS packs — send users to search; sizes are per-ep estimates
-    return [
-      { quality: "1080p", size: "~350–450 MB / ep", format: "MKV", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
-      { quality: "720p", size: "~150–250 MB / ep", format: "MKV", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
-      { quality: "480p", size: "~80–120 MB / ep", format: "MP4", url: ytsSearch, magnet: "", seeds: 0, peers: 0 },
-    ];
-  }
-
-  return [
-    { quality: "2160p", size: "~8–14 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
-    { quality: "1080p", size: "~1.8–3.2 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
-    { quality: "720p", size: "~700 MB–1.4 GB", format: "MKV", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
-    { quality: "480p", size: "~350–600 MB", format: "MP4", url: ytsBrowse, magnet: "", seeds: 0, peers: 0 },
-  ];
+  // No fake torrent links — return empty so the UI hides the section
+  // when real streams are unavailable.
+  void title;
+  void type;
+  return [];
 }
 
 // ─────────────────────────────────────────────
