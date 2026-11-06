@@ -1,16 +1,18 @@
 /**
- * Curious Tech APIs — Full Movie torrent magnets
- * Docs catalogue: https://curiousapis.name.ng
+ * Curious Tech APIs — direct MP4 streams (not torrents)
  *
- * Auth: X-API-Key header (set CURIOS_API_KEY or CURIOUS_API_KEY on Vercel)
+ * GET /movies/stream/movie?id={imdb_id}
+ * GET /movies/stream/tv?id={imdb_id}&season=&episode=
+ * GET /full_movie/search?q={query}
  *
- * Endpoints used:
- *   GET /full_movie/search?q={query}
- *   GET /full_movie/download/movie?id={imdb_id}&limit=&quality=&sort=
- *   GET /full_movie/download/tv?id={imdb_id}&season=&episode=&limit=
+ * Auth: X-API-Key  (CURIOUS_API_KEY / CURIOS_API_KEY on Vercel)
+ *
+ * CDN requires Referer: https://vidlink.pro/ — proxy downloads through
+ * your own /api/proxy-download endpoint for browser compatibility.
  */
 
 const CURIOUS_BASE = "https://curiousapis.name.ng";
+const STREAM_REFERER = "https://vidlink.pro/";
 
 function apiKey(): string {
   return (
@@ -21,25 +23,15 @@ function apiKey(): string {
   );
 }
 
-export interface CuriousTorrent {
+export interface DirectDownload {
   quality: string;
   size: string;
   format: string;
-  url: string; // magnet or http
-  magnet: string;
+  url: string; // direct CDN mp4 (needs referer) OR your proxy URL
+  magnet: string; // always empty for direct downloads
   seeds: number;
   peers: number;
-}
-
-interface CuriousResult {
-  name?: string;
-  quality?: string;
-  size?: string;
-  size_bytes?: number;
-  seeders?: number;
-  leechers?: number;
-  download_url?: string;
-  source?: string;
+  referer?: string;
 }
 
 async function curiousFetch(path: string): Promise<any | null> {
@@ -51,8 +43,8 @@ async function curiousFetch(path: string): Promise<any | null> {
         "X-API-Key": key,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(20000),
-    })) as unknown as { ok: boolean; status: number; json: () => Promise<any> };
+      signal: AbortSignal.timeout(25000),
+    })) as unknown as { ok: boolean; json: () => Promise<any> };
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -60,30 +52,55 @@ async function curiousFetch(path: string): Promise<any | null> {
   }
 }
 
-function mapResults(results: CuriousResult[] | undefined): CuriousTorrent[] {
-  if (!Array.isArray(results) || !results.length) return [];
-  return results.map((r) => {
-    const magnet = (r.download_url || "").startsWith("magnet:")
-      ? r.download_url!
-      : "";
-    const url = r.download_url || "";
-    const quality = (r.quality && r.quality !== "unknown" ? r.quality : "HD").replace(
-      /^2160p$/i,
-      "4K UHD"
-    );
+/** Prefer lower/medium qualities first for smaller files. */
+const QUALITY_ORDER: Record<string, number> = {
+  "360p": 0,
+  "480p": 1,
+  "720p": 2,
+  "1080p": 3,
+  "4K": 4,
+  "4K UHD": 4,
+  "2160p": 4,
+};
+
+function mapStreams(streams: any[] | undefined): DirectDownload[] {
+  if (!Array.isArray(streams) || !streams.length) return [];
+  const mapped = streams.map((s) => {
+    const quality = String(s.quality || "HD");
+    const rawUrl = String(s.url || "");
     return {
       quality,
-      size: r.size || "Unknown",
-      format: r.source ? `Torrent · ${r.source}` : "Torrent",
-      url,
-      magnet,
-      seeds: r.seeders ?? 0,
-      peers: r.leechers ?? 0,
+      size: estimateSize(quality),
+      format: "MP4",
+      url: rawUrl,
+      magnet: "",
+      seeds: 0,
+      peers: 0,
+      referer: s.referer_required || STREAM_REFERER,
     };
   });
+  mapped.sort(
+    (a, b) =>
+      (QUALITY_ORDER[a.quality] ?? 50) - (QUALITY_ORDER[b.quality] ?? 50)
+  );
+  return mapped;
 }
 
-/** Resolve an IMDb id via Curious search (title + optional year). */
+function estimateSize(quality: string): string {
+  switch (quality) {
+    case "360p":
+      return "~200–400 MB";
+    case "480p":
+      return "~350–700 MB";
+    case "720p":
+      return "~700 MB–1.5 GB";
+    case "1080p":
+      return "~1.5–3 GB";
+    default:
+      return "Varies";
+  }
+}
+
 export async function searchImdbId(
   title: string,
   year?: number | null,
@@ -102,58 +119,50 @@ export async function searchImdbId(
     let score = 0;
     if (norm(r.title || "") === target) score += 10;
     if (year && Number(r.year) === year) score += 5;
-    if (preferType !== "any" && r.type === preferType) score += 3;
-    if (preferType === "movie" && r.type === "movie") score += 1;
-    if (preferType === "tvSeries" && (r.type === "tvSeries" || r.type === "tv"))
-      score += 1;
+    if (preferType === "movie" && r.type === "movie") score += 3;
+    if (
+      preferType === "tvSeries" &&
+      (r.type === "tvSeries" || r.type === "tv")
+    )
+      score += 3;
     return { id: r.imdb_id as string, score };
   });
   scored.sort((a, b) => b.score - a.score);
   return scored[0]?.id || results[0]?.imdb_id || null;
 }
 
-/** Movie torrent magnets by IMDb id. */
-export async function getMovieTorrents(
-  imdbId: string,
-  opts: { limit?: number; quality?: string; sort?: string } = {}
-): Promise<CuriousTorrent[]> {
-  const limit = opts.limit ?? 8;
-  const quality = opts.quality ?? "any";
-  const sort = opts.sort ?? "seeders";
+export async function getMovieStreams(
+  imdbId: string
+): Promise<DirectDownload[]> {
   const id = imdbId.startsWith("tt") ? imdbId : `tt${imdbId}`;
   const data = await curiousFetch(
-    `/full_movie/download/movie?id=${encodeURIComponent(id)}&limit=${limit}&quality=${encodeURIComponent(quality)}&sort=${encodeURIComponent(sort)}`
+    `/movies/stream/movie?id=${encodeURIComponent(id)}`
   );
-  return mapResults(data?.results);
+  return mapStreams(data?.streams);
 }
 
-/** TV episode torrent magnets. */
-export async function getTvTorrents(
+export async function getTvStreams(
   imdbId: string,
   season: number,
-  episode: number,
-  limit = 8
-): Promise<CuriousTorrent[]> {
+  episode: number
+): Promise<DirectDownload[]> {
   const id = imdbId.startsWith("tt") ? imdbId : `tt${imdbId}`;
   const data = await curiousFetch(
-    `/full_movie/download/tv?id=${encodeURIComponent(id)}&season=${season}&episode=${episode}&limit=${limit}`
+    `/movies/stream/tv?id=${encodeURIComponent(id)}&season=${season}&episode=${episode}`
   );
-  return mapResults(data?.results);
+  return mapStreams(data?.streams);
 }
 
-/**
- * Best-effort movie links: use IMDb id if known, otherwise search by title.
- */
 export async function getCuriousMovieLinks(
   title: string,
   year?: number | null,
   imdbId?: string | null
-): Promise<CuriousTorrent[]> {
+): Promise<DirectDownload[]> {
   if (!apiKey()) return [];
   let id = imdbId || null;
   if (!id) id = await searchImdbId(title, year, "movie");
   if (!id) return [];
-  return getMovieTorrents(id);
+  return getMovieStreams(id);
 }
 
 export async function getCuriousTvLinks(
@@ -162,10 +171,12 @@ export async function getCuriousTvLinks(
   episode: number,
   year?: number | null,
   imdbId?: string | null
-): Promise<CuriousTorrent[]> {
+): Promise<DirectDownload[]> {
   if (!apiKey()) return [];
   let id = imdbId || null;
   if (!id) id = await searchImdbId(title, year, "tvSeries");
   if (!id) return [];
-  return getTvTorrents(id, season, episode);
+  return getTvStreams(id, season, episode);
 }
+
+export { STREAM_REFERER };
