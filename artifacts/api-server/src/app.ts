@@ -6,6 +6,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
+import { registerProxyDownload } from "./routes/proxyDownload";
+
+
 
 const app = express();
 
@@ -41,5 +44,6 @@ const clerkPublishableKey =
   process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
 app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 app.use("/api", router);
+registerProxyDownload(app);
 
 export default app;
