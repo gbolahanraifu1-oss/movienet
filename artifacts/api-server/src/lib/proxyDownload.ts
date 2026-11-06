@@ -18,12 +18,21 @@ function hostAllowed(urlStr: string): boolean {
   }
 }
 
+type FetchResponse = {
+  ok: boolean;
+  status: number;
+  body: import("node:stream/web").ReadableStream<Uint8Array> | null;
+  headers: {
+    get(name: string): string | null;
+  };
+};
+
 /**
  * Mount on the Express app.
- * Path becomes: GET /api/proxy-download?url=&filename=
+ * Path: GET /api/proxy-download?url=&filename=
  *
- * Uses `any` for app/req/res to match the rest of api-server routes and avoid
- * Express vs DOM Request/Response type clashes under tsconfig "types": ["node"].
+ * fetch is cast the same way as tmdb.ts / yts.ts — this project's
+ * TS setup types global fetch against Express Response otherwise.
  */
 export function registerProxyDownload(app: any): void {
   app.get("/proxy-download", async (req: any, res: any): Promise<void> => {
@@ -39,14 +48,14 @@ export function registerProxyDownload(app: any): void {
     }
 
     try {
-      const upstream = await fetch(url, {
+      const upstream = (await fetch(url, {
         headers: {
           Referer: "https://vidlink.pro/",
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
         signal: AbortSignal.timeout(120000),
-      });
+      })) as unknown as FetchResponse;
 
       if (!upstream.ok || !upstream.body) {
         res.status(upstream.status || 502).json({ error: "Upstream failed" });
@@ -63,9 +72,7 @@ export function registerProxyDownload(app: any): void {
       if (contentLength) res.setHeader("Content-Length", contentLength);
       res.setHeader("Cache-Control", "private, no-store");
 
-      const nodeStream = Readable.fromWeb(
-        upstream.body as import("node:stream/web").ReadableStream
-      );
+      const nodeStream = Readable.fromWeb(upstream.body);
       nodeStream.pipe(res);
     } catch {
       if (!res.headersSent) {
