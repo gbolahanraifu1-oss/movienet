@@ -1,3 +1,4 @@
+
 import { Readable } from "node:stream";
 
 const ALLOWED_HOST_SUFFIXES = [
@@ -28,14 +29,13 @@ type FetchResponse = {
 };
 
 /**
- * Mount on the Express app.
- * Path: GET /api/proxy-download?url=&filename=
+ * Mount on the root Express app.
+ * MUST use /api/proxy-download — other routes live under app.use("/api", router).
  *
- * fetch is cast the same way as tmdb.ts / yts.ts — this project's
- * TS setup types global fetch against Express Response otherwise.
+ * GET /api/proxy-download?url=<cdn>&filename=video.mp4
  */
 export function registerProxyDownload(app: any): void {
-  app.get("/proxy-download", async (req: any, res: any): Promise<void> => {
+  const handler = async (req: any, res: any): Promise<void> => {
     const url = String(req.query?.url || "");
     const filename = String(req.query?.filename || "video.mp4").replace(
       /[^\w.\- ()[\]]+/g,
@@ -79,5 +79,9 @@ export function registerProxyDownload(app: any): void {
         res.status(502).json({ error: "Proxy download failed" });
       }
     }
-  });
+  };
+
+  // Register both paths so either mount style works
+  app.get("/api/proxy-download", handler);
+  app.get("/proxy-download", handler);
 }
