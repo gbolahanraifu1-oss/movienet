@@ -1,12 +1,13 @@
 /**
- * PixelDrain remote upload (leech).
- * Env: PIXELDRAIN_API_KEY from https://pixeldrain.com/user/api_keys
+ * PixelDrain upload via PUT /api/file/{name}
+ * (Remote /file/url is not available — returns not_found.)
  *
- * Auth: HTTP Basic, username empty, password = API key
- *   Authorization: Basic base64(":" + key)
+ * Flow: fetch source with required Referer → stream body to PixelDrain.
+ * Env: PIXELDRAIN_API_KEY
  */
 
 const PD_BASE = "https://pixeldrain.com/api";
+const DEFAULT_REFERER = "https://vidlink.pro/";
 
 function apiKey(): string {
   return (
@@ -23,13 +24,15 @@ export function hasPixeldrainKey(): boolean {
 type FetchResponse = {
   ok: boolean;
   status: number;
-  json: () => Promise<any>;
+  body: import("node:stream/web").ReadableStream<Uint8Array> | null;
+  headers: { get(name: string): string | null };
+  arrayBuffer: () => Promise<ArrayBuffer>;
   text: () => Promise<string>;
+  json: () => Promise<any>;
 };
 
 function basicAuthHeader(key: string): string {
-  const token = Buffer.from(`:${key}`, "utf8").toString("base64");
-  return `Basic ${token}`;
+  return `Basic ${Buffer.from(`:${key}`, "utf8").toString("base64")}`;
 }
 
 export type PixeldrainResult =
@@ -37,11 +40,13 @@ export type PixeldrainResult =
   | { ok: false; error: string; status?: number; raw?: string };
 
 /**
- * Ask PixelDrain to pull a remote URL into their storage.
+ * Download sourceUrl (with Referer) and PUT the bytes to PixelDrain.
+ * Works for moderate files; large movies may hit Vercel time/size limits.
  */
 export async function remoteUploadToPixeldrain(
   sourceUrl: string,
-  fileName: string
+  fileName: string,
+  referer: string = DEFAULT_REFERER
 ): Promise<PixeldrainResult> {
   const key = apiKey();
   if (!key) {
@@ -54,98 +59,113 @@ export async function remoteUploadToPixeldrain(
   const safeName =
     fileName.replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180) || "video.mp4";
 
-  // Try form-urlencoded first (most common), then JSON
-  const attempts: Array<{
-    headers: Record<string, string>;
-    body: string;
-  }> = [
-    {
+  // 1) Fetch source
+  let upstream: FetchResponse;
+  try {
+    upstream = (await fetch(sourceUrl, {
       headers: {
-        Authorization: basicAuthHeader(key),
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        Referer: referer,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "*/*",
       },
-      body: new URLSearchParams({ url: sourceUrl, name: safeName }).toString(),
-    },
-    {
-      headers: {
-        Authorization: basicAuthHeader(key),
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ url: sourceUrl, name: safeName }),
-    },
-  ];
-
-  let lastError = "PixelDrain upload failed";
-  let lastStatus = 0;
-  let lastRaw = "";
-
-  for (const attempt of attempts) {
-    try {
-      const res = (await fetch(`${PD_BASE}/file/url`, {
-        method: "POST",
-        headers: attempt.headers,
-        body: attempt.body,
-        signal: AbortSignal.timeout(120000),
-      })) as unknown as FetchResponse;
-
-      const text = await res.text();
-      lastRaw = text.slice(0, 500);
-      lastStatus = res.status;
-
-      let data: any = null;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        lastError = `PixelDrain returned non-JSON (${res.status})`;
-        continue;
-      }
-
-      if (data?.success === false) {
-        lastError =
-          data.message ||
-          data.value ||
-          `PixelDrain error (${res.status})`;
-        // auth errors won't succeed on next attempt either
-        if (data.value === "authentication_required") {
-          return {
-            ok: false,
-            error:
-              "PixelDrain rejected the API key. Check PIXELDRAIN_API_KEY on Vercel (redeploy after setting).",
-            status: res.status,
-            raw: lastRaw,
-          };
-        }
-        continue;
-      }
-
-      const id =
-        (typeof data?.id === "string" && data.id) ||
-        (typeof data?.value === "string" && data.value) ||
-        (typeof data?.value?.id === "string" && data.value.id) ||
-        null;
-
-      if (!id) {
-        lastError = "PixelDrain response had no file id";
-        continue;
-      }
-
-      return {
-        ok: true,
-        id,
-        downloadUrl: `https://pixeldrain.com/api/file/${id}?download`,
-        pageUrl: `https://pixeldrain.com/u/${id}`,
-      };
-    } catch (e: any) {
-      lastError = e?.message || "PixelDrain network error";
-    }
+      signal: AbortSignal.timeout(115000),
+    })) as unknown as FetchResponse;
+  } catch (e: any) {
+    return { ok: false, error: `Source fetch failed: ${e?.message || e}` };
   }
 
-  return {
-    ok: false,
-    error: lastError,
-    status: lastStatus || undefined,
-    raw: lastRaw || undefined,
-  };
+  if (!upstream.ok) {
+    const status = upstream.status;
+    if (status === 429) {
+      return {
+        ok: false,
+        error:
+          "Source CDN rate-limited (429). Wait a few minutes and try again, or pick another quality.",
+        status,
+      };
+    }
+    return {
+      ok: false,
+      error: `Source returned HTTP ${status}`,
+      status,
+    };
+  }
+
+  // Buffer in memory — Vercel serverless can't easily pipe unknown streams to another fetch body in all runtimes
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await upstream.arrayBuffer();
+  } catch (e: any) {
+    return { ok: false, error: `Failed reading source body: ${e?.message || e}` };
+  }
+
+  if (!bytes || bytes.byteLength < 1000) {
+    return {
+      ok: false,
+      error: `Source file too small (${bytes?.byteLength ?? 0} bytes) — likely blocked or expired`,
+    };
+  }
+
+  // 2) PUT to PixelDrain
+  try {
+    const putRes = (await fetch(
+      `${PD_BASE}/file/${encodeURIComponent(safeName)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: basicAuthHeader(key),
+          "Content-Type":
+            upstream.headers.get("content-type") || "application/octet-stream",
+          Accept: "application/json",
+        },
+        body: bytes,
+        signal: AbortSignal.timeout(115000),
+      }
+    )) as unknown as FetchResponse;
+
+    const text = await putRes.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return {
+        ok: false,
+        error: `PixelDrain returned non-JSON (${putRes.status})`,
+        status: putRes.status,
+        raw: text.slice(0, 300),
+      };
+    }
+
+    if (data?.success === false) {
+      return {
+        ok: false,
+        error: data.message || data.value || "PixelDrain upload rejected",
+        status: putRes.status,
+        raw: text.slice(0, 300),
+      };
+    }
+
+    const id =
+      (typeof data?.id === "string" && data.id) ||
+      (typeof data?.value === "string" && data.value) ||
+      null;
+
+    if (!id) {
+      return {
+        ok: false,
+        error: "PixelDrain response had no file id",
+        raw: text.slice(0, 300),
+      };
+    }
+
+    return {
+      ok: true,
+      id,
+      downloadUrl: `https://pixeldrain.com/api/file/${id}?download`,
+      pageUrl: `https://pixeldrain.com/u/${id}`,
+    };
+  } catch (e: any) {
+    return { ok: false, error: `PixelDrain PUT failed: ${e?.message || e}` };
+  }
 }
