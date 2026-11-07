@@ -207,6 +207,7 @@ function ClerkProviderWithRoutes() {
                   </Route>
                   <Route path="/calendar" component={Calendar} />
                   <Route path="/subscription" component={Subscription} />
+                  <Route path="/watch" component={WatchPage} />
                   <Route path="/download" component={DownloadPage} />
                   <Route path="/about" component={About} />
                   <Route path="/contact" component={Contact} />
@@ -231,6 +232,5 @@ export default function App() {
     <WouterRouter base={basePath}>
       <ClerkProviderWithRoutes />
     </WouterRouter>
-<Route path="/watch" component={WatchPage} />
   );
 }
