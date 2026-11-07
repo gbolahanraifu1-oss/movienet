@@ -21,6 +21,10 @@ import { DownloadPage } from "./pages/Download";
 import { About } from "./pages/About";
 import { Contact } from "./pages/Contact";
 
+import { WatchPage } from "./pages/Watch";
+
+
+
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
@@ -227,5 +231,6 @@ export default function App() {
     <WouterRouter base={basePath}>
       <ClerkProviderWithRoutes />
     </WouterRouter>
+<Route path="/watch" component={WatchPage} />
   );
 }
