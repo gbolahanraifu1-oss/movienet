@@ -9,33 +9,39 @@ async function handlePrepare(req: any, res: any): Promise<void> {
     return;
   }
 
-  if (hasPixeldrainKey()) {
-    const pd = await remoteUploadToPixeldrain(url, filename);
-    if (pd) {
-      res.json({
-        mode: "pixeldrain",
-        downloadUrl: pd.downloadUrl,
-        pageUrl: pd.pageUrl,
-        id: pd.id,
-      });
-      return;
-    }
+  if (!hasPixeldrainKey()) {
+    const params = new URLSearchParams({ url, filename });
+    res.json({
+      mode: "proxy",
+      downloadUrl: `/api/proxy-download?${params.toString()}`,
+      warning: "PIXELDRAIN_API_KEY not set — using rate-limited proxy.",
+    });
+    return;
   }
 
+  const pd = await remoteUploadToPixeldrain(url, filename);
+  if (pd.ok) {
+    res.json({
+      mode: "pixeldrain",
+      downloadUrl: pd.downloadUrl,
+      pageUrl: pd.pageUrl,
+      id: pd.id,
+    });
+    return;
+  }
+
+  // Surface real failure reason (auth, rate limit, etc.)
   const params = new URLSearchParams({ url, filename });
   res.json({
     mode: "proxy",
     downloadUrl: `/api/proxy-download?${params.toString()}`,
-    warning: hasPixeldrainKey()
-      ? "PixelDrain upload failed; using proxy (may rate-limit)."
-      : "Set PIXELDRAIN_API_KEY for stable downloads.",
+    warning: `PixelDrain failed: ${pd.error}`,
+    pixeldrainStatus: pd.status ?? null,
+    pixeldrainRaw: pd.raw ?? null,
   });
 }
 
-/**
- * POST or GET /api/prepare-download
- * Body/query: url, filename
- */
+/** POST or GET /api/prepare-download  body/query: url, filename */
 export function registerPrepareDownload(app: any): void {
   app.post("/api/prepare-download", handlePrepare);
   app.get("/api/prepare-download", handlePrepare);
