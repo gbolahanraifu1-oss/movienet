@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
 import { ArrowLeft, ExternalLink, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "../components/AdSlot";
@@ -50,8 +50,12 @@ const SOURCES: Source[] = [
 
 export function WatchPage() {
   // /watch?type=movie&id=155&title=...&season=1&episode=1
-  const search = useSearch();
-  const params = useMemo(() => new URLSearchParams(search), [search]);
+  // Use window.location so we don't depend on wouter's useSearch export
+  const params = useMemo(
+    () => new URLSearchParams(window.location.search),
+    // re-read when path changes is enough for SPA query on this page
+    [typeof window !== "undefined" ? window.location.search : ""]
+  );
 
   const type = (params.get("type") === "tv" || params.get("type") === "anime"
     ? "tv"
