@@ -100,8 +100,15 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
             {/* Action Buttons */}
             <div className="flex flex-col gap-3">
               {data.isReleased ? (
-                <Button className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 text-lg shadow-lg shadow-primary/20">
-                  <Play className="w-5 h-5 mr-2 fill-current" /> Watch Now
+                <Button asChild className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 text-lg shadow-lg shadow-primary/20">
+                  <Link href={`/watch?${new URLSearchParams({
+                    type: type === "anime" ? "tv" : "movie",
+                    id: String(id),
+                    title: data.title || "",
+                    back: `/title/${type}/${id}`,
+                  }).toString()}`}>
+                    <Play className="w-5 h-5 mr-2 fill-current" /> Watch Now
+                  </Link>
                 </Button>
               ) : (
                 <Show when="signed-in" fallback={<Button disabled className="w-full h-12 bg-zinc-800 text-zinc-400">Sign in to set reminder</Button>}>
@@ -258,27 +265,23 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
                 {activeSeason && (
                   <div>
                     <p className="text-xs text-zinc-500 mb-3">
-                      Select an episode — download links are placeholders for now
+                      Select an episode to watch
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                       {Array.from({ length: activeSeason.episodeCount }, (_, i) => {
                         const ep = i + 1;
                         const params = new URLSearchParams({
+                          type: "tv",
+                          id: String(id),
                           title: `${data.title} — S${String(activeSeason.seasonNumber).padStart(2, "0")}E${String(ep).padStart(2, "0")}`,
-                          quality: "1080p",
-                          size: "~350–450 MB / ep",
-                          format: "MKV",
-                          url: "",
-                          magnet: "",
-                          poster: data.posterUrl ?? "",
-                          back: `/title/${data.type}/${data.id}`,
                           season: String(activeSeason.seasonNumber),
                           episode: String(ep),
+                          back: `/title/${type}/${id}`,
                         });
                         return (
                           <Link
                             key={ep}
-                            href={`/download?${params.toString()}`}
+                            href={`/watch?${params.toString()}`}
                             className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-3 py-2.5 rounded-lg border border-white/5 transition-all group hover:border-primary/30"
                           >
                             <Play className="w-3.5 h-3.5 text-zinc-500 group-hover:text-primary shrink-0" />
