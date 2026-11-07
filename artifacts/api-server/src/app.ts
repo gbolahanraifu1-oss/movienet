@@ -47,7 +47,6 @@ const clerkPublishableKey =
 app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 registerProxyDownload(app);
 app.use("/api", router);
-registerProxyDownload(app);
 registerPrepareDownload(app);
 
 
