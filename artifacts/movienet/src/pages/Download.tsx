@@ -6,15 +6,6 @@ import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 const COUNTDOWN = 5;
 
-function proxyDownloadUrl(cdnUrl: string, filename: string): string {
-  if (!cdnUrl || cdnUrl.startsWith("magnet:")) return cdnUrl;
-  const params = new URLSearchParams({
-    url: cdnUrl,
-    filename,
-  });
-  return `/api/proxy-download?${params.toString()}`;
-}
-
 export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
@@ -25,16 +16,15 @@ export function DownloadPage() {
   const fileUrl = params.get("url") ?? "";
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
-  const movieId = params.get("id") ?? "";
 
   const safeName = `${title.replace(/[^\w\s.-]+/g, "").trim() || "video"}-${quality || "hd"}.mp4`;
-  const proxyHref = proxyDownloadUrl(fileUrl, safeName);
 
   const [seconds, setSeconds] = useState(COUNTDOWN);
-  const [status, setStatus] = useState<"countdown" | "downloading" | "done" | "error">(
+  const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">(
     "countdown"
   );
   const [errorMsg, setErrorMsg] = useState("");
+  const [finalUrl, setFinalUrl] = useState("");
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -56,70 +46,40 @@ export function DownloadPage() {
       return;
     }
 
-    setStatus("downloading");
+    setStatus("preparing");
     setErrorMsg("");
 
     try {
-      // Prefer proxy (adds Referer the CDN requires). Check response type so we
-      // never save a JSON error body as "video.mp4".
-      const res = await fetch(proxyHref, { method: "GET", credentials: "omit" });
-      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      // Ask backend to remote-upload to PixelDrain (stable link) or fall back to proxy
+      const res = await fetch("/api/prepare-download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ url: fileUrl, filename: safeName }),
+      });
+
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        let msg = `Download failed (${res.status})`;
-        if (contentType.includes("json")) {
-          try {
-            const body = await res.json();
-            if (body?.error) msg = String(body.error);
-          } catch {
-            /* ignore */
-          }
-        }
-        if (res.status === 429) {
-          msg =
-            "Source is rate-limited right now. Wait a minute and try again, or pick another quality.";
-        }
-        if (res.status === 403 || res.status === 401) {
-          msg = "Link expired or blocked. Go back to the title and open download again for a fresh link.";
-        }
         setStatus("error");
-        setErrorMsg(msg);
+        setErrorMsg(data?.error || `Prepare failed (${res.status})`);
         return;
       }
 
-      // JSON success would still be wrong for a video download
-      if (contentType.includes("json") || contentType.includes("text/html")) {
+      const downloadUrl = String(data.downloadUrl || "");
+      if (!downloadUrl) {
         setStatus("error");
-        setErrorMsg(
-          "Server returned an error page instead of a video. Try again from the title page."
-        );
+        setErrorMsg("No download link returned. Try again later.");
         return;
       }
 
-      const blob = await res.blob();
-      if (blob.size < 10_000) {
-        // Tiny body is almost never a real movie file
-        setStatus("error");
-        setErrorMsg(
-          "File was too small to be a real video (link may have expired). Go back and try again."
-        );
-        return;
-      }
-
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = safeName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      // PixelDrain or proxy URL — navigate so the browser downloads natively
+      // (no loading a whole movie into JS memory)
+      setFinalUrl(downloadUrl);
       setStatus("done");
+      window.location.href = downloadUrl;
     } catch {
       setStatus("error");
-      setErrorMsg(
-        "Network error while downloading. Check your connection and try again."
-      );
+      setErrorMsg("Network error while preparing download. Check your connection.");
     }
   }
 
@@ -215,10 +175,12 @@ export function DownloadPage() {
                 </>
               )}
 
-              {status === "downloading" && (
+              {status === "preparing" && (
                 <>
                   <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  <p className="text-zinc-300 text-center">Downloading… this can take a while</p>
+                  <p className="text-zinc-300 text-center max-w-xs">
+                    Preparing a stable download link… this can take up to a minute
+                  </p>
                 </>
               )}
 
@@ -227,11 +189,18 @@ export function DownloadPage() {
                   <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
                     <CheckCircle2 className="w-10 h-10 text-primary" />
                   </div>
-                  <p className="text-white font-semibold text-lg">Download started</p>
+                  <p className="text-white font-semibold text-lg">Download ready</p>
                   <p className="text-zinc-400 text-sm text-center max-w-xs">
-                    Check your Downloads folder for{" "}
-                    <span className="text-zinc-200">{safeName}</span>
+                    If nothing started, tap the button below.
                   </p>
+                  {finalUrl && (
+                    <a
+                      href={finalUrl}
+                      className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 rounded-full px-8 py-3 text-sm font-bold text-white"
+                    >
+                      <Download className="w-4 h-4" /> Open download link
+                    </a>
+                  )}
                 </>
               )}
 
@@ -265,8 +234,8 @@ export function DownloadPage() {
           <AdSlot label="Advertisement" />
 
           <p className="text-center text-xs text-zinc-600 leading-relaxed">
-            Files come from third-party CDNs. Large movies may fail on slow networks or when
-            the source rate-limits. Prefer 360p / 480p on mobile.
+            Files are fetched by PixelDrain from third-party sources when configured. Prefer
+            360p / 480p on mobile if a link fails.
           </p>
         </div>
       </div>
