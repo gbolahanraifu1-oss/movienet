@@ -10,16 +10,16 @@ async function handlePrepare(req: any, res: any): Promise<void> {
   }
 
   if (!hasPixeldrainKey()) {
-    const params = new URLSearchParams({ url, filename });
-    res.json({
-      mode: "proxy",
-      downloadUrl: `/api/proxy-download?${params.toString()}`,
-      warning: "PIXELDRAIN_API_KEY not set — using rate-limited proxy.",
+    res.status(503).json({
+      error:
+        "PIXELDRAIN_API_KEY not configured. Downloads need PixelDrain until a VPS source is available.",
+      mode: "none",
     });
     return;
   }
 
   const pd = await remoteUploadToPixeldrain(url, filename);
+
   if (pd.ok) {
     res.json({
       mode: "pixeldrain",
@@ -30,18 +30,23 @@ async function handlePrepare(req: any, res: any): Promise<void> {
     return;
   }
 
-  // Surface real failure reason (auth, rate limit, etc.)
-  const params = new URLSearchParams({ url, filename });
-  res.json({
-    mode: "proxy",
-    downloadUrl: `/api/proxy-download?${params.toString()}`,
-    warning: `PixelDrain failed: ${pd.error}`,
+  // Do NOT fall back to proxy-download — that hits the same CDN and always 429s.
+  // Surface the real error so the Download page can show it.
+  const isRateLimit =
+    pd.status === 429 ||
+    /rate-?limit|429/i.test(pd.error || "");
+
+  res.status(isRateLimit ? 429 : 502).json({
+    mode: "failed",
+    error: pd.error,
     pixeldrainStatus: pd.status ?? null,
-    pixeldrainRaw: pd.raw ?? null,
+    hint: isRateLimit
+      ? "The movie CDN is rate-limiting server IPs. Wait 10–30 minutes, try 360p, or use Watch instead of Download."
+      : "Rehost failed. Try again later or use an in-page stream if available.",
   });
 }
 
-/** POST or GET /api/prepare-download  body/query: url, filename */
+/** POST or GET /api/prepare-download */
 export function registerPrepareDownload(app: any): void {
   app.post("/api/prepare-download", handlePrepare);
   app.get("/api/prepare-download", handlePrepare);
