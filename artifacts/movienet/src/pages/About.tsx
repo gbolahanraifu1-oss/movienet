@@ -34,7 +34,7 @@ const VALUES = [
 ];
 
 const TEAM = [
-  { name: "Rai", role: "Founder & Product", avatar: "R" },
+  { name: "𝙼𝙰𝙳𝙰𝚁𝙰𝐃𝐄𝐕", role: "Founder & Product", avatar: "♕𝙼" },
   { name: "Dev Team", role: "Engineering", avatar: "D" },
   { name: "Design Crew", role: "UI / UX", avatar: "✦" },
 ];
