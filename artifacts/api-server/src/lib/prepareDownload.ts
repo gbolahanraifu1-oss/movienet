@@ -3,6 +3,13 @@ import { remoteUploadToPixeldrain, hasPixeldrainKey } from "./pixeldrain.js";
 const VPS_URL = (process.env.DOWNLOAD_VPS_URL || "").replace(/\/$/, "");
 const VPS_SECRET = process.env.DOWNLOAD_VPS_SECRET || "";
 
+type FetchResponse = {
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
+  headers: { get(name: string): string | null };
+};
+
 async function tryVpsLeech(
   url: string,
   filename: string
@@ -13,7 +20,7 @@ async function tryVpsLeech(
   if (!VPS_URL) return { ok: false, error: "DOWNLOAD_VPS_URL not set" };
 
   try {
-    const res = await fetch(`${VPS_URL}/leech`, {
+    const res = (await fetch(`${VPS_URL}/leech`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -22,22 +29,25 @@ async function tryVpsLeech(
       },
       body: JSON.stringify({ url, filename, referer: "https://vidlink.pro/" }),
       signal: AbortSignal.timeout(300000),
-    });
+    })) as unknown as FetchResponse;
 
     const text = await res.text();
     let data: any = null;
     try {
       data = JSON.parse(text);
     } catch {
-      // VPS may stream the file directly — not JSON
-      if (res.ok && res.headers.get("content-type")?.includes("video")) {
+      if (res.ok && (res.headers.get("content-type") || "").includes("video")) {
         return {
           ok: true,
           mode: "vps-stream",
           downloadUrl: `${VPS_URL}/leech?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}${VPS_SECRET ? `&secret=${encodeURIComponent(VPS_SECRET)}` : ""}`,
         };
       }
-      return { ok: false, error: `VPS non-JSON (${res.status})`, status: res.status };
+      return {
+        ok: false,
+        error: `VPS non-JSON (${res.status})`,
+        status: res.status,
+      };
     }
 
     if (!res.ok) {
@@ -73,7 +83,7 @@ async function handlePrepare(req: any, res: any): Promise<void> {
     return;
   }
 
-  // 1) Prefer VPS (different IP — avoids Vercel→CDN 429)
+  // 1) Prefer VPS
   if (VPS_URL) {
     const vps = await tryVpsLeech(url, filename);
     if (vps.ok) {
@@ -85,7 +95,6 @@ async function handlePrepare(req: any, res: any): Promise<void> {
       });
       return;
     }
-    // If VPS also rate-limited, report that — don't pretend proxy will work
     if (vps.status === 429 || /429|rate-?limit/i.test(vps.error)) {
       res.status(429).json({
         mode: "failed",
@@ -94,10 +103,10 @@ async function handlePrepare(req: any, res: any): Promise<void> {
       });
       return;
     }
-    // fall through to local PixelDrain attempt
+    // fall through to local PixelDrain
   }
 
-  // 2) Local PixelDrain rehost (often 429 from Vercel IP)
+  // 2) Local PixelDrain rehost
   if (hasPixeldrainKey()) {
     const pd = await remoteUploadToPixeldrain(url, filename);
     if (pd.ok) {
