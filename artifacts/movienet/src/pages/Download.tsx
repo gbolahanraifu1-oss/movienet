@@ -59,9 +59,16 @@ export function DownloadPage() {
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
+      if (!res.ok || data?.mode === "failed" || data?.mode === "none") {
+        const parts = [
+          data?.error,
+          data?.hint,
+        ].filter(Boolean);
         setStatus("error");
-        setErrorMsg(data?.error || `Prepare failed (${res.status})`);
+        setErrorMsg(
+          parts.join(" — ") ||
+            `Prepare failed (${res.status}). The source may be rate-limiting downloads.`
+        );
         return;
       }
 
@@ -72,8 +79,7 @@ export function DownloadPage() {
         return;
       }
 
-      // PixelDrain or proxy URL — navigate so the browser downloads natively
-      // (no loading a whole movie into JS memory)
+      // Only navigate for real PixelDrain (or other stable) links
       setFinalUrl(downloadUrl);
       setStatus("done");
       window.location.href = downloadUrl;
