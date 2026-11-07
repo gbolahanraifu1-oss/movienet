@@ -7,6 +7,8 @@ import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
 import { registerProxyDownload } from "./lib/proxyDownload.js";
+import { registerProxyDownload } from "./lib/proxyDownload.js";
+import { registerPrepareDownload } from "./lib/prepareDownload.js";
 
 
 
@@ -46,5 +48,7 @@ app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 registerProxyDownload(app);
 app.use("/api", router);
 registerProxyDownload(app);
+registerPrepareDownload(app);
+
 
 export default app;
