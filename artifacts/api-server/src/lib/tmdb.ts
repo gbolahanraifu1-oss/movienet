@@ -1,5 +1,17 @@
 import { getYtsLinks } from "./yts.js";
 import { getCuriousMovieLinks, getCuriousTvLinks } from "./curious.js";
+
+/** Episode download/stream links via Curious TV endpoint */
+export async function resolveEpisodeDownloads(
+  title: string,
+  season: number,
+  episode: number,
+  year?: number | null,
+  imdbId?: string | null
+) {
+  return getCuriousTvLinks(title, season, episode, year, imdbId);
+}
+
 import type { DirectDownload } from "./curious.js";
 
 /** Unified download row for title detail (streams or empty). */
@@ -467,8 +479,14 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
           }))
       : [];
 
+  const imdbId =
+    (m as any).external_ids?.imdb_id ||
+    (m as any).imdb_id ||
+    null;
+
   return {
     id: String(m.id),
+    imdbId,
     type,
     title: m.title || m.name || "Unknown",
     posterUrl: posterUrl(m.poster_path),
