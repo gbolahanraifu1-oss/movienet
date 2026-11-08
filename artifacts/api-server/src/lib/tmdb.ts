@@ -351,6 +351,76 @@ export async function getAnimeDetail(id: string) {
   }
 }
 
+
+/** Non-anime TV series (excludes Animation genre 16). */
+export async function getSeriesList(params: {
+  region?: string; // "all" | "kdrama" | "cdrama" | "jdrama" | "western"
+  search?: string;
+  page?: number;
+  sort?: string;
+}) {
+  const page = params.page || 1;
+  const region = (params.region || "all").toLowerCase();
+
+  try {
+    if (params.search) {
+      const data = await tmdbFetch("/search/tv", { query: params.search, page });
+      let results = (data.results || []).filter(
+        (r: TmdbMovie) => !r.genre_ids?.includes(16)
+      );
+      if (region === "kdrama") {
+        results = results.filter((r: TmdbMovie) => (r as any).original_language === "ko");
+      } else if (region === "cdrama") {
+        results = results.filter((r: TmdbMovie) =>
+          ["zh", "cn", "zh-CN", "zh-TW"].includes(String((r as any).original_language || ""))
+        );
+      } else if (region === "jdrama") {
+        // Japanese live-action only (not anime): no Animation genre, lang ja
+        results = results.filter(
+          (r: TmdbMovie) =>
+            (r as any).original_language === "ja" && !r.genre_ids?.includes(16)
+        );
+      } else if (region === "western") {
+        results = results.filter((r: TmdbMovie) =>
+          ["en", "es", "fr", "de", "pt", "it"].includes(String((r as any).original_language || ""))
+        );
+      }
+      return formatMovieList({ ...data, results }, "anime"); // reuse card type "anime" path for /title/anime/:id
+    }
+
+    const sortMap: Record<string, string> = {
+      popular: "popularity.desc",
+      latest: "first_air_date.desc",
+      rating: "vote_average.desc",
+      title: "original_name.asc",
+    };
+    const sortBy = sortMap[params.sort || "popular"] || "popularity.desc";
+    const fetchParams: Record<string, string | number> = {
+      page,
+      sort_by: sortBy,
+      without_genres: 16, // exclude Animation → no anime/cartoons
+    };
+    if (params.sort === "rating") fetchParams["vote_count.gte"] = 50;
+
+    if (region === "kdrama") fetchParams.with_original_language = "ko";
+    else if (region === "cdrama") fetchParams.with_original_language = "zh";
+    else if (region === "jdrama") fetchParams.with_original_language = "ja";
+    else if (region === "western") fetchParams.with_original_language = "en";
+
+    const data = await tmdbFetch("/discover/tv", fetchParams);
+    // jdrama: double-check no animation slipped in
+    if (region === "jdrama" || region === "all") {
+      const results = (data.results || []).filter(
+        (r: TmdbMovie) => !r.genre_ids?.includes(16)
+      );
+      return formatMovieList({ ...data, results }, "anime");
+    }
+    return formatMovieList(data, "anime");
+  } catch {
+    return { items: [], total: 0, page, totalPages: 1 };
+  }
+}
+
 export async function getTrendingAll(limit = 40) {
   const [movies, anime, featured] = await Promise.all([
     getTrendingMoviesList(Math.floor(limit / 2)),
