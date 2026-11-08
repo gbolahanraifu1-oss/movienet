@@ -10,14 +10,21 @@ export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
   const title = params.get("title") ?? "Unknown Title";
-  const quality = params.get("quality") ?? "";
-  const size = params.get("size") ?? "";
+  const qualityParam = params.get("quality") ?? "";
+  const sizeParam = params.get("size") ?? "";
   const format = params.get("format") ?? "MP4";
-  const fileUrl = params.get("url") ?? "";
+  const fileUrlParam = params.get("url") ?? "";
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
+  const mediaType = params.get("type") ?? "movie"; // movie | anime
+  const tmdbId = params.get("id") ?? "";
+  const season = params.get("season") ?? "";
+  const episode = params.get("episode") ?? "";
 
-  const safeName = `${title.replace(/[^\w\s.-]+/g, "").trim() || "video"}-${quality || "hd"}.mp4`;
+  const [displayQuality, setDisplayQuality] = useState(qualityParam);
+  const [displaySize, setDisplaySize] = useState(sizeParam);
+
+  const safeName = `${title.replace(/[^\w\s.-]+/g, "").trim() || "video"}-${displayQuality || "hd"}.mp4`;
 
   const [seconds, setSeconds] = useState(COUNTDOWN);
   const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">(
@@ -39,18 +46,49 @@ export function DownloadPage() {
     void startDownload();
   }, [seconds]);
 
-  async function startDownload() {
-    if (!fileUrl) {
-      setStatus("error");
-      setErrorMsg("No download URL was provided. Go back and pick a quality again.");
-      return;
+  async function resolveSourceUrl(): Promise<string | null> {
+    if (fileUrlParam && fileUrlParam.startsWith("http")) {
+      return fileUrlParam;
     }
 
+    // Series episode: fetch Curious links for SxEx
+    if ((mediaType === "anime" || mediaType === "tv") && tmdbId && season && episode) {
+      const res = await fetch(
+        `/api/anime/${encodeURIComponent(tmdbId)}/episode-links?season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      const links: any[] = data.downloadLinks || [];
+      if (!links.length) {
+        setErrorMsg(
+          "No download sources for this episode yet. Try Watch instead, or another episode."
+        );
+        return null;
+      }
+      // Prefer lower quality for mobile reliability
+      const preferred =
+        links.find((l) => /360/.test(l.quality)) ||
+        links.find((l) => /480/.test(l.quality)) ||
+        links[0];
+      setDisplayQuality(preferred.quality || displayQuality);
+      setDisplaySize(preferred.size || displaySize);
+      return preferred.url || null;
+    }
+
+    setErrorMsg("No download URL was provided. Go back and pick a quality again.");
+    return null;
+  }
+
+  async function startDownload() {
     setStatus("preparing");
     setErrorMsg("");
 
     try {
-      // Ask backend to remote-upload to PixelDrain (stable link) or fall back to proxy
+      const fileUrl = await resolveSourceUrl();
+      if (!fileUrl) {
+        setStatus("error");
+        return;
+      }
+
       const res = await fetch("/api/prepare-download", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -60,10 +98,7 @@ export function DownloadPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data?.mode === "failed" || data?.mode === "none") {
-        const parts = [
-          data?.error,
-          data?.hint,
-        ].filter(Boolean);
+        const parts = [data?.error, data?.hint].filter(Boolean);
         setStatus("error");
         setErrorMsg(
           parts.join(" — ") ||
@@ -75,117 +110,86 @@ export function DownloadPage() {
       const downloadUrl = String(data.downloadUrl || "");
       if (!downloadUrl) {
         setStatus("error");
-        setErrorMsg("No download link returned. Try again later.");
+        setErrorMsg("Server returned no download URL.");
         return;
       }
 
-      // Only navigate for real PixelDrain (or other stable) links
       setFinalUrl(downloadUrl);
       setStatus("done");
-      window.location.href = downloadUrl;
-    } catch {
+      // Trigger browser download / open
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.rel = "noopener";
+      a.target = "_blank";
+      a.download = safeName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e: any) {
       setStatus("error");
-      setErrorMsg("Network error while preparing download. Check your connection.");
+      setErrorMsg(e?.message || "Download failed");
     }
   }
 
   return (
-    <div className="min-h-[100dvh] bg-background flex flex-col">
-      <div className="w-full border-b border-border/30">
-        <div className="container mx-auto px-4 py-3 max-w-5xl">
-          <AdSlot label="Advertisement" />
-        </div>
-      </div>
+    <div className="min-h-[100dvh] bg-background">
+      <div className="container mx-auto px-4 py-8 max-w-lg">
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-white text-sm mb-6"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back to title
+        </Link>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-2xl flex flex-col gap-8">
-          <Link
-            href={backHref}
-            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors text-sm w-fit"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to title
-          </Link>
-
-          <div className="bg-zinc-900/60 border border-white/8 rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
-            <div className="flex items-center gap-5 p-6 border-b border-white/5">
-              {poster && (
-                <img
-                  src={poster}
-                  alt={title}
-                  className="w-16 h-24 object-cover rounded-lg border border-white/10 shrink-0"
-                />
-              )}
-              <div className="flex flex-col gap-1 min-w-0">
-                <p className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">
-                  Preparing download
-                </p>
-                <h1 className="text-xl md:text-2xl font-display font-bold text-white leading-tight truncate">
-                  {title}
-                </h1>
-                <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  {quality && (
-                    <span className="px-2.5 py-0.5 text-xs font-bold rounded bg-primary/20 text-primary border border-primary/30 uppercase tracking-wider">
-                      {quality}
-                    </span>
-                  )}
-                  <span className="text-xs text-zinc-400">{format || "MP4"}</span>
-                  {size && <span className="text-xs text-zinc-400">{size}</span>}
-                </div>
-              </div>
+        <div className="space-y-6">
+          <div className="flex gap-4 items-start">
+            {poster ? (
+              <img
+                src={poster}
+                alt=""
+                className="w-20 h-28 object-cover rounded-lg border border-white/10"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
+                Preparing download
+              </p>
+              <h1 className="text-xl font-display font-bold text-white leading-snug">
+                {title}
+              </h1>
+              <p className="text-sm text-zinc-400 mt-1">
+                {displayQuality && (
+                  <span className="inline-block mr-2 px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">
+                    {displayQuality}
+                  </span>
+                )}
+                {format}
+                {displaySize ? ` · ${displaySize}` : ""}
+                {season && episode ? ` · S${season}E${episode}` : ""}
+              </p>
             </div>
+          </div>
 
-            <div className="flex flex-col items-center gap-6 py-12 px-6">
+          <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-8">
+            <div className="flex flex-col items-center gap-4">
               {status === "countdown" && (
                 <>
-                  <div className="relative w-24 h-24 flex items-center justify-center">
-                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 96 96">
-                      <circle
-                        cx="48"
-                        cy="48"
-                        r="44"
-                        fill="none"
-                        stroke="rgba(124,58,237,0.15)"
-                        strokeWidth="6"
-                      />
-                      <circle
-                        cx="48"
-                        cy="48"
-                        r="44"
-                        fill="none"
-                        stroke="hsl(262 83% 58%)"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray={`${2 * Math.PI * 44}`}
-                        strokeDashoffset={`${2 * Math.PI * 44 * (seconds / COUNTDOWN)}`}
-                        style={{ transition: "stroke-dashoffset 1s linear" }}
-                      />
-                    </svg>
-                    <span className="text-4xl font-display font-bold text-white tabular-nums">
-                      {seconds}
-                    </span>
+                  <div className="w-20 h-20 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center text-3xl font-bold text-white">
+                    {seconds}
                   </div>
-                  <p className="text-zinc-400 text-center max-w-xs">
-                    Starting in{" "}
-                    <span className="text-white font-semibold">{seconds}</span>s
+                  <p className="text-white font-semibold text-lg">Starting soon</p>
+                  <p className="text-zinc-400 text-sm text-center max-w-xs">
+                    Download will begin automatically. You can close ads after.
                   </p>
-                  <Button
-                    size="lg"
-                    className="rounded-full px-10 font-bold shadow-lg shadow-primary/25 bg-primary hover:bg-primary/90"
-                    onClick={() => {
-                      startedRef.current = true;
-                      void startDownload();
-                    }}
-                  >
-                    <Download className="w-5 h-5 mr-2" /> Download MP4
-                  </Button>
                 </>
               )}
 
               {status === "preparing" && (
                 <>
-                  <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  <p className="text-zinc-300 text-center max-w-xs">
-                    Preparing a stable download link… this can take up to a minute
+                  <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-white font-semibold text-lg">Preparing file…</p>
+                  <p className="text-zinc-400 text-sm text-center max-w-xs">
+                    Fetching a stable link. This can take a minute.
                   </p>
                 </>
               )}
@@ -240,8 +244,8 @@ export function DownloadPage() {
           <AdSlot label="Advertisement" />
 
           <p className="text-center text-xs text-zinc-600 leading-relaxed">
-            Files are fetched by PixelDrain from third-party sources when configured. Prefer
-            360p / 480p on mobile if a link fails.
+            Episode downloads use the same sources as streaming. If the CDN rate-limits,
+            use Watch instead or try again later.
           </p>
         </div>
       </div>
