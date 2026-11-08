@@ -24,6 +24,13 @@ const NAV_LINKS = [
   { href: "/calendar", label: "Calendar", icon: Calendar },
 ];
 
+const GENRE_LINKS = [
+  "Action", "Adventure", "Animation", "Comedy", "Crime",
+  "Documentary", "Drama", "Family", "Fantasy", "History",
+  "Horror", "Music", "Mystery", "Romance", "Science Fiction",
+  "Thriller", "War", "Western",
+];
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [scrolled, setScrolled] = useState(false);
@@ -142,7 +149,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden absolute top-16 left-0 right-0 bg-background/95 backdrop-blur-xl border-b border-border p-4 flex flex-col gap-2 shadow-2xl animate-in slide-in-from-top-2">
+          <div className="md:hidden absolute top-16 left-0 right-0 bg-background/95 backdrop-blur-xl border-b border-border p-4 flex flex-col gap-2 shadow-2xl animate-in slide-in-from-top-2 max-h-[calc(100dvh-4rem)] overflow-y-auto">
             {NAV_LINKS.map((link) => {
               const active = location === link.href;
               const Icon = link.icon;
@@ -163,6 +170,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+
+            <div className="mt-2 pt-3 border-t border-white/10">
+              <p className="px-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                Genres
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                {GENRE_LINKS.map((g) => {
+                  const href = `/genre/${encodeURIComponent(g)}`;
+                  const active = location === href || location.startsWith(`/genre/${encodeURIComponent(g)}`);
+                  return (
+                    <Link
+                      key={g}
+                      href={href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        "px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                        active
+                          ? "bg-primary/20 text-primary"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      {g}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </header>
@@ -200,6 +234,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 ].map(l => (
                   <Link key={l.href} href={l.href} className="text-sm text-zinc-400 hover:text-white transition-colors">{l.label}</Link>
                 ))}
+              </div>
+              <div className="flex flex-col gap-3 max-w-[140px]">
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Genres</p>
+                {GENRE_LINKS.slice(0, 8).map(g => (
+                  <Link
+                    key={g}
+                    href={`/genre/${encodeURIComponent(g)}`}
+                    className="text-sm text-zinc-400 hover:text-white transition-colors"
+                  >
+                    {g}
+                  </Link>
+                ))}
+                <Link href="/movies" className="text-sm text-primary hover:text-primary/80 transition-colors">
+                  All genres →
+                </Link>
               </div>
               <div className="flex flex-col gap-3">
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Company</p>
