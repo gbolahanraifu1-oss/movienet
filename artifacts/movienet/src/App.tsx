@@ -7,6 +7,10 @@ import { queryClient } from "@/lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 
+import { GenrePage } from "./pages/Genre";
+// ...
+
+
 import Layout from "./components/Layout";
 import { Home } from "./pages/Home";
 import { Movies } from "./pages/Movies";
@@ -210,8 +214,10 @@ function ClerkProviderWithRoutes() {
                   <Route path="/watch" component={WatchPage} />
                   <Route path="/download" component={DownloadPage} />
                   <Route path="/about" component={About} />
+<Route path="/genre/:name" component={GenrePage} />
                   <Route path="/contact" component={Contact} />
                   <Route>
+
                     <div className="flex min-h-[50vh] flex-col items-center justify-center text-center px-4">
                       <h1 className="text-4xl font-display font-bold text-foreground mb-4">404 - Not Found</h1>
                       <p className="text-muted-foreground max-w-md">The page you&apos;re looking for doesn&apos;t exist or has been moved.</p>
