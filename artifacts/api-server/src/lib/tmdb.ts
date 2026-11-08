@@ -1,5 +1,12 @@
 import { getYtsLinks } from "./yts.js";
-import { getCuriousMovieLinks, getCuriousTvLinks } from "./curious.js";
+import {
+  getCuriousMovieLinks,
+  getCuriousTvLinks,
+  type DirectDownload,
+} from "./curious.js";
+
+/** Unified download row for title detail (streams or empty). */
+type DownloadLink = DirectDownload;
 
 /** Episode download/stream links via Curious TV endpoint */
 export async function resolveEpisodeDownloads(
@@ -11,11 +18,6 @@ export async function resolveEpisodeDownloads(
 ) {
   return getCuriousTvLinks(title, season, episode, year, imdbId);
 }
-
-import type { DirectDownload } from "./curious.js";
-
-/** Unified download row for title detail (streams or empty). */
-type DownloadLink = DirectDownload;
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
