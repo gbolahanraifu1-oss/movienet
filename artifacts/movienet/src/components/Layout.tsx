@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 const NAV_LINKS = [
   { href: "/", label: "Home", icon: Popcorn },
   { href: "/movies", label: "Movies", icon: PlaySquare },
+  { href: "/series", label: "Series", icon: PlaySquare },
   { href: "/anime", label: "Anime", icon: Flame },
   { href: "/sports", label: "Sports", icon: Trophy },
   { href: "/trending", label: "Trending", icon: Flame },
@@ -228,6 +229,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Explore</p>
                 {[
                   { href: "/movies", label: "Movies" },
+                  { href: "/series", label: "Series" },
                   { href: "/anime", label: "Anime" },
                   { href: "/sports", label: "Sports" },
                   { href: "/trending", label: "Trending" },
