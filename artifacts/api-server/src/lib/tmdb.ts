@@ -138,9 +138,21 @@ export async function getMovies(params: {
     const sortBy = sortMap[params.sort || "popular"] || "popularity.desc";
     const fetchParams: Record<string, string | number> = { page, sort_by: sortBy };
     if (genreId) fetchParams.with_genres = genreId;
+    // Exclude TMDB "TV Movie"
+    fetchParams.without_genres = 10770;
     if (params.sort === "rating") fetchParams["vote_count.gte"] = 100;
 
     const data = await tmdbFetch("/discover/movie", fetchParams);
+    // /genre/Animation & Movies→Animation = cartoons / non-Japanese animated films
+    if ((params.genre || "").toLowerCase() === "animation") {
+      const filtered = {
+        ...data,
+        results: (data.results || []).filter(
+          (m: TmdbMovie) => (m as any).original_language !== "ja"
+        ),
+      };
+      return formatMovieList(filtered, "movie");
+    }
     return formatMovieList(data, "movie");
   } catch {
     const movies = getMockMovies();
@@ -223,15 +235,25 @@ export async function getAnimeList(params: {
     const page = params.page || 1;
     if (params.search) {
       const data = await tmdbFetch("/search/tv", { query: params.search, page });
-      const filtered = { ...data, results: (data.results || []).filter((r: TmdbMovie) => r.genre_ids?.includes(16)) };
-      return formatMovieList(filtered, "anime");
+      // Anime only: Animation + Japanese (not Western cartoons)
+      const jaOnly = (data.results || []).filter(
+        (r: TmdbMovie) =>
+          r.genre_ids?.includes(16) && (r as any).original_language === "ja"
+      );
+      return formatMovieList({ ...data, results: jaOnly }, "anime");
     }
     const sortMap: Record<string, string> = {
       popular: "popularity.desc", latest: "first_air_date.desc",
       rating: "vote_average.desc", title: "original_name.asc",
     };
     const sortBy = sortMap[params.sort || "popular"] || "popularity.desc";
-    const fetchParams: Record<string, string | number> = { page, sort_by: sortBy, with_genres: 16 };
+    // Anime = TV Animation + Japanese language (excludes Western cartoons / "manga" style dumps)
+    const fetchParams: Record<string, string | number> = {
+      page,
+      sort_by: sortBy,
+      with_genres: 16,
+      with_original_language: "ja",
+    };
     if (params.sort === "rating") fetchParams["vote_count.gte"] = 50;
     const data = await tmdbFetch("/discover/tv", fetchParams);
     return formatMovieList(data, "anime");
@@ -253,7 +275,10 @@ export async function getAnimeList(params: {
 export async function getTrendingAnimeList(limit = 20) {
   try {
     const data = await tmdbFetch("/discover/tv", {
-      with_genres: 16, sort_by: "popularity.desc", page: 1,
+      with_genres: 16,
+      with_original_language: "ja",
+      sort_by: "popularity.desc",
+      page: 1,
     });
     return (data.results || []).slice(0, limit).map((m: TmdbMovie) => formatMovie(m, "anime"));
   } catch {
