@@ -1,5 +1,6 @@
 import { Router } from "express";
 import animeRouter from "./anime.js";
+import seriesRouter from "./series.js";
 import calendarRouter from "./calendar.js";
 import contactRouter from "./contact.js";
 import healthRouter from "./health.js";
@@ -13,6 +14,7 @@ const router = Router();
 
 router.use(healthRouter);
 router.use(animeRouter);
+router.use(seriesRouter);
 router.use(calendarRouter);
 router.use(contactRouter);
 router.use(moviesRouter);
