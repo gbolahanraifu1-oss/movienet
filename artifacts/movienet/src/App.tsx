@@ -15,6 +15,7 @@ import Layout from "./components/Layout";
 import { Home } from "./pages/Home";
 import { Movies } from "./pages/Movies";
 import { Anime } from "./pages/Anime";
+import { SeriesPage } from "./pages/Series";
 import { Sports } from "./pages/Sports";
 import { Trending } from "./pages/Trending";
 import { Browse } from "./pages/Browse";
@@ -203,6 +204,7 @@ function ClerkProviderWithRoutes() {
                   <Route path="/" component={Home} />
                   <Route path="/movies" component={Movies} />
                   <Route path="/anime" component={Anime} />
+                  <Route path="/series" component={SeriesPage} />
                   <Route path="/sports" component={Sports} />
                   <Route path="/trending" component={Trending} />
                   <Route path="/browse" component={Browse} />
