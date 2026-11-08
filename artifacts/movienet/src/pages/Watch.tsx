@@ -1,19 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ExternalLink, Play } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "../components/AdSlot";
 
 type Source = { id: string; label: string; build: (ctx: Ctx) => string };
+type Ctx = { type: "movie" | "tv"; id: string; season: number; episode: number };
+type Quality = { quality: string; url: string; size?: string };
 
-type Ctx = {
-  type: "movie" | "tv";
-  id: string;
-  season: number;
-  episode: number;
-};
-
-const SOURCES: Source[] = [
+const EMBED_SOURCES: Source[] = [
   {
     id: "vidlink",
     label: "VidLink",
@@ -48,18 +43,31 @@ const SOURCES: Source[] = [
   },
 ];
 
+async function resolveStreamUrl(cdnUrl: string): Promise<string | null> {
+  if (!cdnUrl) return null;
+  try {
+    const res = await fetch(
+      `/api/stream-proxy?url=${encodeURIComponent(cdnUrl)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.streamUrl || null;
+  } catch {
+    return null;
+  }
+}
+
 export function WatchPage() {
-  // /watch?type=movie&id=155&title=...&season=1&episode=1
-  // Use window.location so we don't depend on wouter's useSearch export
   const params = useMemo(
     () => new URLSearchParams(window.location.search),
-    // re-read when path changes is enough for SPA query on this page
-    [typeof window !== "undefined" ? window.location.search : ""]
+    []
   );
 
-  const type = (params.get("type") === "tv" || params.get("type") === "anime"
-    ? "tv"
-    : "movie") as "movie" | "tv";
+  const type = (
+    params.get("type") === "tv" || params.get("type") === "anime"
+      ? "tv"
+      : "movie"
+  ) as "movie" | "tv";
   const id = params.get("id") || "";
   const title = params.get("title") || "Now Playing";
   const season = Math.max(1, Number(params.get("season") || 1));
@@ -68,12 +76,136 @@ export function WatchPage() {
     params.get("back") ||
     (id ? `/title/${type === "tv" ? "anime" : "movie"}/${id}` : "/");
 
-  const [sourceId, setSourceId] = useState(SOURCES[0].id);
-  const source = SOURCES.find((s) => s.id === sourceId) || SOURCES[0];
+  const [mode, setMode] = useState<"native" | "embed">("native");
+  const [qualities, setQualities] = useState<Quality[]>([]);
+  const [qualityIdx, setQualityIdx] = useState(0);
+  const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
+  const [nativeError, setNativeError] = useState("");
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<any>(null);
 
+  const embedSource =
+    EMBED_SOURCES.find((s) => s.id === sourceId) || EMBED_SOURCES[0];
   const embedUrl = id
-    ? source.build({ type, id, season, episode })
+    ? embedSource.build({ type, id, season, episode })
     : "";
+
+  // Load stream qualities from API (movies only for native for now)
+  useEffect(() => {
+    if (!id) {
+      setLoadingMeta(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const path =
+          type === "tv"
+            ? `/api/anime/${id}`
+            : `/api/movies/${id}`;
+        const res = await fetch(path);
+        const data = await res.json();
+        if (cancelled) return;
+        const links: Quality[] = (data.downloadLinks || [])
+          .filter((l: any) => l.url && String(l.url).startsWith("http"))
+          .map((l: any) => ({
+            quality: l.quality || "HD",
+            url: l.url,
+            size: l.size,
+          }));
+        setQualities(links);
+        if (!links.length) {
+          setMode("embed");
+          setNativeError("No direct stream URL — using embed servers.");
+        }
+      } catch {
+        if (!cancelled) {
+          setMode("embed");
+          setNativeError("Could not load streams — using embed servers.");
+        }
+      } finally {
+        if (!cancelled) setLoadingMeta(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, type]);
+
+  // Init / update Video.js when native mode + quality available
+  useEffect(() => {
+    if (mode !== "native" || !qualities.length) return;
+
+    const q = qualities[qualityIdx] || qualities[0];
+    let destroyed = false;
+
+    async function setup() {
+      const src = await resolveStreamUrl(q.url);
+      if (destroyed) return;
+      if (!src) {
+        setNativeError(
+          "Stream proxy not configured (DOWNLOAD_VPS_URL). Using embed servers."
+        );
+        setMode("embed");
+        return;
+      }
+
+      if (!(window as any).videojs) {
+        await new Promise<void>((resolve, reject) => {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = "https://vjs.zencdn.net/8.16.1/video-js.css";
+          document.head.appendChild(link);
+          const script = document.createElement("script");
+          script.src = "https://vjs.zencdn.net/8.16.1/video.min.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("video.js load failed"));
+          document.body.appendChild(script);
+        });
+      }
+      if (destroyed || !videoRef.current) return;
+
+      const videojs = (window as any).videojs;
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
+
+      const player = videojs(videoRef.current, {
+        controls: true,
+        autoplay: true,
+        preload: "auto",
+        fluid: true,
+        sources: [{ src, type: "video/mp4" }],
+      });
+      playerRef.current = player;
+
+      player.on("error", () => {
+        setNativeError(
+          "Direct stream failed (CDN may be rate-limiting). Switch to an embed server."
+        );
+        setMode("embed");
+      });
+    }
+
+    setup().catch(() => {
+      setNativeError("Player failed to load. Using embed servers.");
+      setMode("embed");
+    });
+
+    return () => {
+      destroyed = true;
+      if (playerRef.current) {
+        try {
+          playerRef.current.dispose();
+        } catch {
+          /* ignore */
+        }
+        playerRef.current = null;
+      }
+    };
+  }, [mode, qualities, qualityIdx]);
 
   if (!id) {
     return (
@@ -90,7 +222,6 @@ export function WatchPage() {
 
   return (
     <div className="min-h-[100dvh] bg-black flex flex-col">
-      {/* Top bar */}
       <div className="flex items-center gap-3 px-3 py-2 border-b border-white/10 bg-zinc-950/90">
         <Link
           href={back}
@@ -106,20 +237,38 @@ export function WatchPage() {
             </p>
           )}
         </div>
-        <a
-          href={embedUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-zinc-500 hover:text-white p-2"
-          title="Open player in new tab"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </a>
+        {mode === "embed" && embedUrl && (
+          <a
+            href={embedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-zinc-500 hover:text-white p-2"
+            title="Open in new tab"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
       </div>
 
-      {/* Player */}
+      {/* Player — no ad banner above */}
       <div className="relative w-full bg-black aspect-video max-h-[70vh] md:max-h-[80vh]">
-        {embedUrl ? (
+        {loadingMeta && (
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
+            Loading player…
+          </div>
+        )}
+
+        {mode === "native" && !loadingMeta && (
+          <div data-vjs-player className="absolute inset-0">
+            <video
+              ref={videoRef}
+              className="video-js vjs-big-play-centered vjs-fluid"
+              playsInline
+            />
+          </div>
+        )}
+
+        {mode === "embed" && embedUrl && (
           <iframe
             key={embedUrl}
             src={embedUrl}
@@ -129,42 +278,105 @@ export function WatchPage() {
             allowFullScreen
             referrerPolicy="origin"
           />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
-            <Play className="w-10 h-10 opacity-40" />
-          </div>
         )}
       </div>
 
-      {/* Source switcher */}
       <div className="px-4 py-4 space-y-4 bg-zinc-950 border-t border-white/10">
-        <div>
-          <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
-            Server / source
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SOURCES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSourceId(s.id)}
-                className={
-                  "px-3 py-1.5 rounded-full text-xs font-bold border transition-colors " +
-                  (s.id === sourceId
-                    ? "bg-primary text-white border-primary"
-                    : "bg-zinc-900 text-zinc-300 border-white/10 hover:border-white/25")
-                }
-              >
-                {s.label}
-              </button>
-            ))}
+        {nativeError && (
+          <div className="flex items-start gap-2 text-amber-200/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{nativeError}</span>
           </div>
-          <p className="text-zinc-600 text-xs mt-3 leading-relaxed">
-            If one server is slow or blocked, switch source. Ads on the player
-            come from the embed provider, not MovieNet.
-          </p>
+        )}
+
+        {/* Mode toggle */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setNativeError("");
+              setMode("native");
+            }}
+            className={
+              "px-3 py-1.5 rounded-full text-xs font-bold border " +
+              (mode === "native"
+                ? "bg-primary text-white border-primary"
+                : "bg-zinc-900 text-zinc-300 border-white/10")
+            }
+          >
+            MovieNet player
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("embed")}
+            className={
+              "px-3 py-1.5 rounded-full text-xs font-bold border " +
+              (mode === "embed"
+                ? "bg-primary text-white border-primary"
+                : "bg-zinc-900 text-zinc-300 border-white/10")
+            }
+          >
+            Embed servers
+          </button>
         </div>
 
+        {mode === "native" && qualities.length > 0 && (
+          <div>
+            <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
+              Quality
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {qualities.map((q, i) => (
+                <button
+                  key={q.quality + i}
+                  type="button"
+                  onClick={() => setQualityIdx(i)}
+                  className={
+                    "px-3 py-1.5 rounded-full text-xs font-bold border " +
+                    (i === qualityIdx
+                      ? "bg-primary text-white border-primary"
+                      : "bg-zinc-900 text-zinc-300 border-white/10")
+                  }
+                >
+                  {q.quality}
+                  {q.size ? ` · ${q.size}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {mode === "embed" && (
+          <div>
+            <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
+              Server / source
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {EMBED_SOURCES.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSourceId(s.id)}
+                  className={
+                    "px-3 py-1.5 rounded-full text-xs font-bold border " +
+                    (s.id === sourceId
+                      ? "bg-primary text-white border-primary"
+                      : "bg-zinc-900 text-zinc-300 border-white/10")
+                  }
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-zinc-600 text-xs mt-3 leading-relaxed">
+              Embed servers may show their own ads. Use MovieNet player when the
+              stream works for an ad-free experience (your ads only around the
+              player).
+            </p>
+          </div>
+        )}
+
+        {/* Best CTR slot — under player */}
         <AdSlot label="Advertisement" />
       </div>
     </div>
