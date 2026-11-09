@@ -43,7 +43,17 @@ const EMBED_SOURCES: Source[] = [
   },
 ];
 
+// ── VPS API CONFIGURATION ──
+const VPS_URL = "http://pat.hidencloud.com:24622";
+const VPS_SECRET = "madara_super_secret";
+
 async function resolveStreamUrl(cdnUrl: string): Promise<string | null> {
+  // If it's already a direct .mp4, return it directly.
+  if (cdnUrl.includes(".mp4") || cdnUrl.includes(".mkv")) {
+    return cdnUrl;
+  }
+  
+  // Otherwise, fallback to the proxy (if you need one)
   if (!cdnUrl) return null;
   try {
     const res = await fetch(
@@ -91,7 +101,7 @@ export function WatchPage() {
     ? embedSource.build({ type, id, season, episode })
     : "";
 
-  // Load stream qualities from API (movies only for native for now)
+  // Load stream qualities from VPS API
   useEffect(() => {
     if (!id) {
       setLoadingMeta(false);
@@ -100,26 +110,27 @@ export function WatchPage() {
     let cancelled = false;
     (async () => {
       try {
-        const path =
-          type === "tv"
-            ? `/api/anime/${id}`
-            : `/api/movies/${id}`;
-        const res = await fetch(path);
-        const data = await res.json();
-        if (cancelled) return;
-        const links: Quality[] = (data.downloadLinks || [])
-          .filter((l: any) => l.url && String(l.url).startsWith("http"))
-          .map((l: any) => ({
-            quality: l.quality || "HD",
-            url: l.url,
-            size: l.size,
-          }));
-        setQualities(links);
-        if (!links.length) {
-          setMode("embed");
-          setNativeError("No direct stream URL — using embed servers.");
+        // Only movies supported by the new VPS right now
+        if (type === "tv") {
+           throw new Error("Series not supported by native scraper yet.");
         }
-      } catch {
+
+        const res = await fetch(`${VPS_URL}/movie/${id}?secret=${VPS_SECRET}`);
+        const data = await res.json();
+        
+        if (cancelled) return;
+
+        if (data.ok && data.sources && data.sources.length > 0) {
+          const links = data.sources.map((s: any) => ({
+            quality: s.quality || "1080p",
+            url: s.url,
+          }));
+          setQualities(links);
+        } else {
+          setMode("embed");
+          setNativeError(data.error || "No direct stream URL — using embed servers.");
+        }
+      } catch (err: any) {
         if (!cancelled) {
           setMode("embed");
           setNativeError("Could not load streams — using embed servers.");
@@ -133,7 +144,7 @@ export function WatchPage() {
     };
   }, [id, type]);
 
-  // Init / update Video.js when native mode + quality available
+  // Init / update Video.js
   useEffect(() => {
     if (mode !== "native" || !qualities.length) return;
 
@@ -144,9 +155,7 @@ export function WatchPage() {
       const src = await resolveStreamUrl(q.url);
       if (destroyed) return;
       if (!src) {
-        setNativeError(
-          "Stream proxy not configured (DOWNLOAD_VPS_URL). Using embed servers."
-        );
+        setNativeError("Stream proxy not configured. Using embed servers.");
         setMode("embed");
         return;
       }
@@ -182,9 +191,7 @@ export function WatchPage() {
       playerRef.current = player;
 
       player.on("error", () => {
-        setNativeError(
-          "Direct stream failed (CDN may be rate-limiting). Switch to an embed server."
-        );
+        setNativeError("Direct stream failed. Switch to an embed server.");
         setMode("embed");
       });
     }
@@ -197,11 +204,7 @@ export function WatchPage() {
     return () => {
       destroyed = true;
       if (playerRef.current) {
-        try {
-          playerRef.current.dispose();
-        } catch {
-          /* ignore */
-        }
+        try { playerRef.current.dispose(); } catch {}
         playerRef.current = null;
       }
     };
@@ -250,7 +253,6 @@ export function WatchPage() {
         )}
       </div>
 
-      {/* Player — no ad banner above */}
       <div className="relative w-full bg-black aspect-video max-h-[70vh] md:max-h-[80vh]">
         {loadingMeta && (
           <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
@@ -289,7 +291,6 @@ export function WatchPage() {
           </div>
         )}
 
-        {/* Mode toggle */}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -345,39 +346,6 @@ export function WatchPage() {
             </div>
           </div>
         )}
-
-        {mode === "embed" && (
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
-              Server / source
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {EMBED_SOURCES.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSourceId(s.id)}
-                  className={
-                    "px-3 py-1.5 rounded-full text-xs font-bold border " +
-                    (s.id === sourceId
-                      ? "bg-primary text-white border-primary"
-                      : "bg-zinc-900 text-zinc-300 border-white/10")
-                  }
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-zinc-600 text-xs mt-3 leading-relaxed">
-              Embed servers may show their own ads. Use MovieNet player when the
-              stream works for an ad-free experience (your ads only around the
-              player).
-            </p>
-          </div>
-        )}
-
-        {/* Best CTR slot — under player */}
-        <AdSlot label="Advertisement" />
       </div>
     </div>
   );
