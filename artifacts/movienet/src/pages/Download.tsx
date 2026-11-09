@@ -10,13 +10,14 @@ export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
   const title = params.get("title") ?? "Unknown Title";
-  const quality = params.get("quality") ?? "";
+  const quality = params.get("quality") ?? "1080p";
   const size = params.get("size") ?? "";
   const format = params.get("format") ?? "MKV";
-  const fileUrlParam = params.get("url") ?? "";
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
   const tmdbId = params.get("id") ?? "";
+
+  const cleanTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
 
   const [seconds, setSeconds] = useState(COUNTDOWN);
   const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">(
@@ -24,7 +25,7 @@ export function DownloadPage() {
   );
   const [errorMsg, setErrorMsg] = useState("");
   const [finalUrl, setFinalUrl] = useState("");
-  const [resolvedTitle, setResolvedTitle] = useState(title);
+  const [resolvedTitle, setResolvedTitle] = useState(cleanTitle);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -44,26 +45,25 @@ export function DownloadPage() {
     setErrorMsg("");
 
     try {
-      let downloadUrl = fileUrlParam;
+      // Always use Nkiri VPS — ignore old Curious/hakunaymatata urls in query string
+      const q = new URLSearchParams();
+      if (tmdbId) q.set("tmdb", tmdbId);
+      q.set("q", cleanTitle);
 
-      // Prefer Nkiri VPS via MovieNet proxy (no secrets in browser)
-      if (!downloadUrl || !downloadUrl.startsWith("http")) {
-        const q = new URLSearchParams();
-        if (tmdbId) q.set("tmdb", tmdbId);
-        q.set("q", title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title);
-        const res = await fetch(`/api/nkiri?${q.toString()}`);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.success || !data?.download) {
-          setStatus("error");
-          setErrorMsg(
-            data?.error ||
-              "No download found. Try another title spelling or use Watch."
-          );
-          return;
-        }
-        downloadUrl = String(data.download);
-        if (data.title) setResolvedTitle(String(data.title));
+      const res = await fetch(`/api/nkiri?${q.toString()}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success || !data?.download) {
+        setStatus("error");
+        setErrorMsg(
+          data?.error ||
+            "No download found on Nkiri. Try another title or use Watch."
+        );
+        return;
       }
+
+      const downloadUrl = String(data.download);
+      if (data.title) setResolvedTitle(String(data.title));
 
       setFinalUrl(downloadUrl);
       setStatus("done");
@@ -101,17 +101,15 @@ export function DownloadPage() {
             ) : null}
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
-                Download
+                Nkiri download
               </p>
               <h1 className="text-xl font-display font-bold text-white leading-snug">
                 {resolvedTitle}
               </h1>
               <p className="text-sm text-zinc-400 mt-1">
-                {quality && (
-                  <span className="inline-block mr-2 px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">
-                    {quality}
-                  </span>
-                )}
+                <span className="inline-block mr-2 px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">
+                  {quality}
+                </span>
                 {format}
                 {size ? ` · ${size}` : ""}
               </p>
@@ -127,7 +125,7 @@ export function DownloadPage() {
                   </div>
                   <p className="text-white font-semibold text-lg">Starting soon</p>
                   <p className="text-zinc-400 text-sm text-center">
-                    Fetching a direct link…
+                    Will fetch a direct link from your VPS…
                   </p>
                 </>
               )}
@@ -135,6 +133,9 @@ export function DownloadPage() {
                 <>
                   <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   <p className="text-white font-semibold text-lg">Finding file…</p>
+                  <p className="text-zinc-500 text-xs text-center">
+                    Scraping can take 30–90 seconds
+                  </p>
                 </>
               )}
               {status === "done" && (
