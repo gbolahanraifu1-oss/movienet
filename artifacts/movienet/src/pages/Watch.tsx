@@ -9,7 +9,7 @@ type Source = { id: string; label: string; build: (ctx: Ctx) => string };
 const EMBED_SOURCES: Source[] = [
   {
     id: "vidlink",
-    label: "VidLink",
+    label: "Server 1",
     build: ({ type, id, season, episode }) =>
       type === "movie"
         ? `https://vidlink.pro/movie/${id}`
@@ -17,7 +17,7 @@ const EMBED_SOURCES: Source[] = [
   },
   {
     id: "vidsrc",
-    label: "VidSrc",
+    label: "Server 2",
     build: ({ type, id, season, episode }) =>
       type === "movie"
         ? `https://vidsrc.xyz/embed/movie/${id}`
@@ -25,7 +25,7 @@ const EMBED_SOURCES: Source[] = [
   },
   {
     id: "vidsrc2",
-    label: "VidSrc.to",
+    label: "Server 3",
     build: ({ type, id, season, episode }) =>
       type === "movie"
         ? `https://vidsrc.to/embed/movie/${id}`
