@@ -5,21 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 const COUNTDOWN = 5;
+const VPS_URL = "http://pat.hidencloud.com:24622";
+const VPS_SECRET = "madara_super_secret";
 
 export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
   const title = params.get("title") ?? "Unknown Title";
-  const qualityParam = params.get("quality") ?? "";
+  const qualityParam = params.get("quality") ?? "1080p";
   const sizeParam = params.get("size") ?? "";
   const format = params.get("format") ?? "MP4";
-  const fileUrlParam = params.get("url") ?? "";
+  const fileUrlParam = params.get("url") ?? ""; // If passed directly
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
-  const mediaType = params.get("type") ?? "movie"; // movie | anime
   const tmdbId = params.get("id") ?? "";
-  const season = params.get("season") ?? "";
-  const episode = params.get("episode") ?? "";
 
   const [displayQuality, setDisplayQuality] = useState(qualityParam);
   const [displaySize, setDisplaySize] = useState(sizeParam);
@@ -47,31 +46,29 @@ export function DownloadPage() {
   }, [seconds]);
 
   async function resolveSourceUrl(): Promise<string | null> {
+    // If the frontend passed the URL directly (from the detail page)
     if (fileUrlParam && fileUrlParam.startsWith("http")) {
       return fileUrlParam;
     }
 
-    // Series episode: fetch Curious links for SxEx
-    if ((mediaType === "anime" || mediaType === "tv") && tmdbId && season && episode) {
-      const res = await fetch(
-        `/api/anime/${encodeURIComponent(tmdbId)}/episode-links?season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode)}`
-      );
-      const data = await res.json().catch(() => ({}));
-      const links: any[] = data.downloadLinks || [];
-      if (!links.length) {
-        setErrorMsg(
-          "No download sources for this episode yet. Try Watch instead, or another episode."
-        );
+    // Otherwise, fetch from VPS using TMDB ID
+    if (tmdbId) {
+      try {
+        const res = await fetch(`${VPS_URL}/movie/${tmdbId}?secret=${VPS_SECRET}`);
+        const data = await res.json();
+        
+        if (data.ok && data.sources && data.sources.length > 0) {
+          const bestQuality = data.sources[0];
+          setDisplayQuality(bestQuality.quality || "1080p");
+          return bestQuality.url;
+        } else {
+          setErrorMsg(data.error || "No download source found.");
+          return null;
+        }
+      } catch (err: any) {
+        setErrorMsg(err.message || "Failed to reach VPS.");
         return null;
       }
-      // Prefer lower quality for mobile reliability
-      const preferred =
-        links.find((l) => /360/.test(l.quality)) ||
-        links.find((l) => /480/.test(l.quality)) ||
-        links[0];
-      setDisplayQuality(preferred.quality || displayQuality);
-      setDisplaySize(preferred.size || displaySize);
-      return preferred.url || null;
     }
 
     setErrorMsg("No download URL was provided. Go back and pick a quality again.");
@@ -89,36 +86,14 @@ export function DownloadPage() {
         return;
       }
 
-      const res = await fetch("/api/prepare-download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ url: fileUrl, filename: safeName }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || data?.mode === "failed" || data?.mode === "none") {
-        const parts = [data?.error, data?.hint].filter(Boolean);
-        setStatus("error");
-        setErrorMsg(
-          parts.join(" — ") ||
-            `Prepare failed (${res.status}). The source may be rate-limiting downloads.`
-        );
-        return;
-      }
-
-      const downloadUrl = String(data.downloadUrl || "");
-      if (!downloadUrl) {
-        setStatus("error");
-        setErrorMsg("Server returned no download URL.");
-        return;
-      }
-
-      setFinalUrl(downloadUrl);
+      // Since it's a direct MP4, we don't need the Vercel proxy.
+      // We just trigger the browser download directly.
+      setFinalUrl(fileUrl);
       setStatus("done");
-      // Trigger browser download / open
+      
+      // Trigger download
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = fileUrl;
       a.rel = "noopener";
       a.target = "_blank";
       a.download = safeName;
@@ -165,7 +140,6 @@ export function DownloadPage() {
                 )}
                 {format}
                 {displaySize ? ` · ${displaySize}` : ""}
-                {season && episode ? ` · S${season}E${episode}` : ""}
               </p>
             </div>
           </div>
@@ -242,14 +216,8 @@ export function DownloadPage() {
           </div>
 
           <AdSlot label="Advertisement" />
-
-          <p className="text-center text-xs text-zinc-600 leading-relaxed">
-            Episode downloads use the same sources as streaming. If the CDN rate-limits,
-            use Watch instead or try again later.
-          </p>
         </div>
       </div>
     </div>
   );
 }
-
