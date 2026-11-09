@@ -321,7 +321,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
             {type === "movie" && data.isReleased && data.downloadLinks && data.downloadLinks.length > 0 && (
               <div className="mt-8">
                 <h3 className="text-lg font-bold font-display text-white mb-1">Downloads</h3>
-                <p className="text-xs text-zinc-500 mb-4">Direct file via Nkiri VPS</p>
+                <p className="text-xs text-zinc-500 mb-4">Resolves a direct file when available</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {data.downloadLinks.map((link: any, i: number) => {
                     // Nkiri resolves the real file — do not pass Curious CDN urls
@@ -331,6 +331,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
                       size: link.size ?? "",
                       format: link.format ?? "MKV",
                       id: String(id),
+                      year: data.year != null ? String(data.year) : "",
                       poster: data.posterUrl ?? "",
                       back: `/title/${data.type}/${data.id}`,
                     });
