@@ -10,12 +10,10 @@ export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
   const title = params.get("title") ?? "Unknown Title";
-  const quality = params.get("quality") ?? "1080p";
-  const size = params.get("size") ?? "";
-  const format = params.get("format") ?? "MKV";
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
   const tmdbId = params.get("id") ?? "";
+  const year = params.get("year") ?? "";
 
   const cleanTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
 
@@ -23,6 +21,7 @@ export function DownloadPage() {
   const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">(
     "countdown"
   );
+  const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [finalUrl, setFinalUrl] = useState("");
   const [resolvedTitle, setResolvedTitle] = useState(cleanTitle);
@@ -35,6 +34,13 @@ export function DownloadPage() {
   }, [seconds, status]);
 
   useEffect(() => {
+    if (status !== "preparing") return;
+    setElapsed(0);
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [status]);
+
+  useEffect(() => {
     if (seconds > 0 || startedRef.current) return;
     startedRef.current = true;
     void startDownload();
@@ -45,10 +51,10 @@ export function DownloadPage() {
     setErrorMsg("");
 
     try {
-      // Always use Nkiri VPS — ignore old Curious/hakunaymatata urls in query string
       const q = new URLSearchParams();
       if (tmdbId) q.set("tmdb", tmdbId);
       q.set("q", cleanTitle);
+      if (year) q.set("year", year);
 
       const res = await fetch(`/api/nkiri?${q.toString()}`);
       const data = await res.json().catch(() => ({}));
@@ -57,7 +63,7 @@ export function DownloadPage() {
         setStatus("error");
         setErrorMsg(
           data?.error ||
-            "No download found on Nkiri. Try another title or use Watch."
+            "No download found. Try another title spelling or use Watch."
         );
         return;
       }
@@ -80,6 +86,8 @@ export function DownloadPage() {
     }
   }
 
+  const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+
   return (
     <div className="min-h-[100dvh] bg-background">
       <div className="container mx-auto px-4 py-8 max-w-lg">
@@ -101,18 +109,12 @@ export function DownloadPage() {
             ) : null}
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
-                Nkiri download
+                Secure download
               </p>
               <h1 className="text-xl font-display font-bold text-white leading-snug">
                 {resolvedTitle}
               </h1>
-              <p className="text-sm text-zinc-400 mt-1">
-                <span className="inline-block mr-2 px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">
-                  {quality}
-                </span>
-                {format}
-                {size ? ` · ${size}` : ""}
-              </p>
+              <p className="text-sm text-zinc-500 mt-1">Direct file · HD</p>
             </div>
           </div>
 
@@ -120,22 +122,37 @@ export function DownloadPage() {
             <div className="flex flex-col items-center gap-4">
               {status === "countdown" && (
                 <>
-                  <div className="w-20 h-20 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center text-3xl font-bold text-white">
+                  <div className="w-20 h-20 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center text-3xl font-bold text-white tabular-nums">
                     {seconds}
                   </div>
-                  <p className="text-white font-semibold text-lg">Starting soon</p>
+                  <p className="text-white font-semibold text-lg">Preparing</p>
                   <p className="text-zinc-400 text-sm text-center">
-                    Will fetch a direct link from your VPS…
+                    Your download starts in a moment.
                   </p>
                 </>
               )}
               {status === "preparing" && (
                 <>
-                  <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-white font-semibold text-lg">Finding file…</p>
-                  <p className="text-zinc-500 text-xs text-center">
-                    Scraping can take 30–90 seconds
+                  <div className="relative w-24 h-24">
+                    <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+                    <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg tabular-nums">
+                      {elapsedLabel}
+                    </div>
+                  </div>
+                  <p className="text-white font-semibold text-lg">Locating file</p>
+                  <p className="text-zinc-400 text-sm text-center max-w-xs">
+                    Connecting to mirrors and resolving a direct link. This can
+                    take up to a minute — timer shows progress.
                   </p>
+                  <div className="w-full max-w-xs h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                    <div
+                      className="h-full bg-primary/80 rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${Math.min(95, 8 + elapsed * 3)}%`,
+                      }}
+                    />
+                  </div>
                 </>
               )}
               {status === "done" && (
@@ -161,7 +178,7 @@ export function DownloadPage() {
                   <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
                     <AlertCircle className="w-10 h-10 text-red-400" />
                   </div>
-                  <p className="text-white font-semibold text-lg">Download failed</p>
+                  <p className="text-white font-semibold text-lg">Unavailable</p>
                   <p className="text-zinc-400 text-sm text-center max-w-sm">{errorMsg}</p>
                   <div className="flex gap-3">
                     <Button
