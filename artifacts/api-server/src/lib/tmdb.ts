@@ -1,4 +1,3 @@
-import { getYtsLinks } from "./yts.js";
 import {
   getCuriousMovieLinks,
   getCuriousTvLinks,
@@ -22,14 +21,6 @@ export async function resolveEpisodeDownloads(
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const API_KEY = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || "";
-
-async function getYtsLinksSafe(title: string, year?: number | null) {
-  try {
-    return await getYtsLinks(title, year);
-  } catch {
-    return [];
-  }
-}
 
 
 async function resolveMovieDownloads(
@@ -216,7 +207,7 @@ export async function getMovieDetail(id: string) {
       append_to_response: "videos,credits,similar,recommendations,external_ids",
     });
     const detail = formatMovieDetail(data, "movie");
-    // Prefer Curious Full Movie magnets; fall back to YTS then mock sizes
+    // Curious streams or mock sizes
     if (detail.isReleased) {
       const links = await resolveMovieDownloads(
         detail.title,
@@ -327,7 +318,7 @@ export async function getAnimeDetail(id: string) {
       append_to_response: "videos,credits,similar,recommendations,external_ids",
     });
     const detail = formatMovieDetail(data, "anime");
-    // Series use seasons/episodes UI — skip YTS movie packs for anime.
+    // Series use seasons/episodes UI — skip movie packs for anime.
     detail.downloadLinks = [];
     return detail;
   } catch {
