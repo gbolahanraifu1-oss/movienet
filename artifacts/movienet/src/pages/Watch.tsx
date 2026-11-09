@@ -45,7 +45,7 @@ const EMBED_SOURCES: Source[] = [
 
 // ── VPS API CONFIGURATION ──
 const VPS_URL = "http://pat.hidencloud.com:24622";
-const VPS_SECRET = "madara_super_secret";
+const VPS_SECRET = "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm";
 
 async function resolveStreamUrl(cdnUrl: string): Promise<string | null> {
   // If it's already a direct .mp4, return it directly.
