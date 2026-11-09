@@ -1,3 +1,4 @@
+import { registerNkiri } from "./lib/nkiri.js";
 import express from "express";
 import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
@@ -6,9 +7,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
-import { registerProxyDownload } from "./lib/proxyDownload.js";
-import { registerPrepareDownload } from "./lib/prepareDownload.js";
-import { registerStreamProxy } from "./lib/streamProxy.js";
 
 
 const app = express();
@@ -45,10 +43,8 @@ const clerkPublishableKey =
   process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
 app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 
-// Direct-file download helpers (must be registered once only)
-registerProxyDownload(app);
-registerPrepareDownload(app);
-registerStreamProxy(app);
+// Nkiri download proxy
+registerNkiri(app);
 
 app.use("/api", router);
 
