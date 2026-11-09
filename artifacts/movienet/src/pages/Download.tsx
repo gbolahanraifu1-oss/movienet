@@ -6,7 +6,7 @@ import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 const COUNTDOWN = 5;
 const VPS_URL = "http://pat.hidencloud.com:24622";
-const VPS_SECRET = "madara_super_secret";
+const VPS_SECRET = "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm";
 
 export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
