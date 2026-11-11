@@ -27,6 +27,7 @@ import { About } from "./pages/About";
 import { Contact } from "./pages/Contact";
 
 import { WatchPage } from "./pages/Watch";
+import { Admin } from "./pages/Admin";
 
 
 
