@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ExternalLink, AlertCircle } from "lucide-react";
+import { ArrowLeft, ExternalLink, AlertCircle, Radio } from "lucide-react";
 import { AdSlot } from "../components/AdSlot";
 
 type Ctx = { type: "movie" | "tv"; id: string; season: number; episode: number };
-type Source = { id: string; label: string; build: (ctx: Ctx) => string };
+type EmbedSource = { id: string; label: string; build: (ctx: Ctx) => string };
 
-const EMBED_SOURCES: Source[] = [
+const EMBED_SOURCES: EmbedSource[] = [
   {
-    id: "vidlink",
+    id: "s1",
     label: "Server 1",
     build: ({ type, id, season, episode }) =>
       type === "movie"
@@ -16,7 +16,7 @@ const EMBED_SOURCES: Source[] = [
         : `https://vidlink.pro/tv/${id}/${season}/${episode}`,
   },
   {
-    id: "vidsrc",
+    id: "s2",
     label: "Server 2",
     build: ({ type, id, season, episode }) =>
       type === "movie"
@@ -24,7 +24,7 @@ const EMBED_SOURCES: Source[] = [
         : `https://vidsrc.xyz/embed/tv/${id}/${season}/${episode}`,
   },
   {
-    id: "vidsrc2",
+    id: "s3",
     label: "Server 3",
     build: ({ type, id, season, episode }) =>
       type === "movie"
@@ -33,101 +33,152 @@ const EMBED_SOURCES: Source[] = [
   },
 ];
 
+function loadVideoJs(): Promise<any> {
+  if ((window as any).videojs) return Promise.resolve((window as any).videojs);
+  return new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://vjs.zencdn.net/8.16.1/video-js.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://vjs.zencdn.net/8.16.1/video.min.js";
+    script.onload = () => resolve((window as any).videojs);
+    script.onerror = () => reject(new Error("Video.js failed to load"));
+    document.body.appendChild(script);
+  });
+}
+
 export function WatchPage() {
   const params = useMemo(
     () => new URLSearchParams(window.location.search),
     []
   );
 
+  const rawType = params.get("type") || "movie";
   const type = (
-    params.get("type") === "tv" || params.get("type") === "anime"
-      ? "tv"
-      : "movie"
+    rawType === "tv" || rawType === "anime" ? "tv" : "movie"
   ) as "movie" | "tv";
+  const isAnime = rawType === "anime" || params.get("source") === "anime";
+  const isSports = rawType === "sports" || params.get("source") === "sports";
   const id = params.get("id") || "";
   const title = params.get("title") || "Now Playing";
   const season = Math.max(1, Number(params.get("season") || 1));
   const episode = Math.max(1, Number(params.get("episode") || 1));
   const back =
     params.get("back") ||
-    (id ? `/title/${type === "tv" ? "anime" : "movie"}/${id}` : "/");
+    (id
+      ? `/title/${isAnime ? "anime" : type === "tv" ? "anime" : "movie"}/${id}`
+      : isSports
+        ? "/sports"
+        : "/");
 
-  const [mode, setMode] = useState<"player" | "embed">("embed");
+  const [mode, setMode] = useState<"player" | "embed">(
+    isSports || isAnime ? "player" : "embed"
+  );
   const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
   const [playerError, setPlayerError] = useState("");
   const [playerLoading, setPlayerLoading] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<any>(null);
 
-  const source = EMBED_SOURCES.find((s) => s.id === sourceId) || EMBED_SOURCES[0];
-  const embedUrl = id ? source.build({ type, id, season, episode }) : "";
+  const embed = EMBED_SOURCES.find((s) => s.id === sourceId) || EMBED_SOURCES[0];
+  const embedUrl =
+    id && !isSports ? embed.build({ type, id, season, episode }) : "";
 
-  // MovieNet player: try Nkiri direct file (often .mkv — may fail in browser)
   useEffect(() => {
-    if (mode !== "player" || !id) return;
+    if (mode !== "player") return;
     let destroyed = false;
 
     async function run() {
       setPlayerLoading(true);
       setPlayerError("");
+      setStatusText("Resolving stream…");
+
       try {
-        const q = new URLSearchParams({ tmdb: id, q: title });
-        const res = await fetch(`/api/nkiri?${q.toString()}`);
-        const data = await res.json().catch(() => ({}));
+        const q = new URLSearchParams();
+        q.set("q", title);
+        if (isSports) q.set("source", "sports");
+        else if (isAnime) {
+          q.set("source", "anime");
+          q.set("episode", String(episode));
+        }
+        if (id && !isSports) q.set("tmdb", id);
+        if (isAnime && season) q.set("season", String(season));
+
+        const mediaRes = await fetch(`/api/media?${q.toString()}`);
+        const media = await mediaRes.json().catch(() => ({}));
         if (destroyed) return;
-        if (!res.ok || !data?.download) {
+
+        const streamUrl: string | undefined =
+          media?.stream?.url ||
+          (media?.mode === "hls" || media?.type === "hls"
+            ? media?.download
+            : undefined);
+        const referer: string =
+          media?.stream?.referer || "https://megaplay.buzz/";
+
+        if (!streamUrl) {
           setPlayerError(
-            data?.error ||
-              "No direct file from Nkiri. Switch to an embed server."
+            media?.error ||
+              "No HLS stream from scraper. Try an embed server."
           );
-          setMode("embed");
+          if (!isSports) setMode("embed");
           setPlayerLoading(false);
           return;
         }
-        const src = String(data.download);
-        if (!(window as any).videojs) {
-          await new Promise<void>((resolve, reject) => {
-            const link = document.createElement("link");
-            link.rel = "stylesheet";
-            link.href = "https://vjs.zencdn.net/8.16.1/video-js.css";
-            document.head.appendChild(link);
-            const script = document.createElement("script");
-            script.src = "https://vjs.zencdn.net/8.16.1/video.min.js";
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error("video.js failed"));
-            document.body.appendChild(script);
-          });
+
+        setStatusText("Building play URL…");
+        const playRes = await fetch(
+          `/api/play-hls?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}`
+        );
+        const play = await playRes.json().catch(() => ({}));
+        if (destroyed) return;
+        if (!play?.playUrl) {
+          setPlayerError("Could not build HLS proxy URL");
+          if (!isSports) setMode("embed");
+          setPlayerLoading(false);
+          return;
         }
+
+        setStatusText("Starting player…");
+        const videojs = await loadVideoJs();
         if (destroyed || !videoRef.current) return;
-        const videojs = (window as any).videojs;
+
         if (playerRef.current) {
-          playerRef.current.dispose();
+          try {
+            playerRef.current.dispose();
+          } catch {
+            /* */
+          }
           playerRef.current = null;
         }
-        const isMkv = /\.mkv(\?|$)/i.test(src);
+
         const player = videojs(videoRef.current, {
           controls: true,
           autoplay: true,
           preload: "auto",
           fluid: true,
+          liveui: isSports,
           sources: [
             {
-              src,
-              type: isMkv ? "video/webm" : "video/mp4",
+              src: play.playUrl,
+              type: "application/x-mpegURL",
             },
           ],
         });
         playerRef.current = player;
         player.on("error", () => {
           setPlayerError(
-            "Browser couldn’t play this file (often .mkv). Use Download or an embed server."
+            "Playback failed (CDN or network). Try embeds or another source."
           );
-          setMode("embed");
+          if (!isSports) setMode("embed");
         });
+        setStatusText("");
       } catch (e: any) {
         if (!destroyed) {
           setPlayerError(e?.message || "Player failed");
-          setMode("embed");
+          if (!isSports) setMode("embed");
         }
       } finally {
         if (!destroyed) setPlayerLoading(false);
@@ -146,9 +197,9 @@ export function WatchPage() {
         playerRef.current = null;
       }
     };
-  }, [mode, id, title]);
+  }, [mode, id, title, episode, season, isAnime, isSports]);
 
-  if (!id) {
+  if (!id && !isSports) {
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center p-6 text-zinc-400">
         Missing title id.{" "}
@@ -170,9 +221,14 @@ export function WatchPage() {
         </Link>
         <div className="min-w-0 flex-1">
           <p className="text-white text-sm font-semibold truncate">{title}</p>
-          {type === "tv" && (
+          {type === "tv" && !isSports && (
             <p className="text-zinc-500 text-xs">
               S{season} · E{episode}
+            </p>
+          )}
+          {isSports && (
+            <p className="text-zinc-500 text-xs flex items-center gap-1">
+              <Radio className="w-3 h-3" /> Live / sports
             </p>
           )}
         </div>
@@ -192,8 +248,9 @@ export function WatchPage() {
         {mode === "player" && (
           <div data-vjs-player className="absolute inset-0">
             {playerLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center text-zinc-400 text-sm bg-black/60">
-                Loading MovieNet player…
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-zinc-300 text-sm bg-black/70">
+                <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span>{statusText || "Loading…"}</span>
               </div>
             )}
             <video
@@ -237,21 +294,23 @@ export function WatchPage() {
           >
             MovieNet player
           </button>
-          <button
-            type="button"
-            onClick={() => setMode("embed")}
-            className={
-              "px-3 py-1.5 rounded-full text-xs font-bold border " +
-              (mode === "embed"
-                ? "bg-primary text-white border-primary"
-                : "bg-zinc-900 text-zinc-300 border-white/10")
-            }
-          >
-            Embed servers
-          </button>
+          {!isSports && (
+            <button
+              type="button"
+              onClick={() => setMode("embed")}
+              className={
+                "px-3 py-1.5 rounded-full text-xs font-bold border " +
+                (mode === "embed"
+                  ? "bg-primary text-white border-primary"
+                  : "bg-zinc-900 text-zinc-300 border-white/10")
+              }
+            >
+              Embed servers
+            </button>
+          )}
         </div>
 
-        {mode === "embed" && (
+        {mode === "embed" && !isSports && (
           <div>
             <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
               Server
@@ -278,9 +337,8 @@ export function WatchPage() {
 
         {mode === "player" && (
           <p className="text-zinc-600 text-xs">
-            Uses your Nkiri VPS file. Many hosts serve .mkv — phones/Chrome often
-            can’t play that in-page; use <strong>Download</strong> or{" "}
-            <strong>Embed servers</strong> if it fails.
+            Plays via your VPS HLS proxy (referer-safe). Anime/sports use scraper
+            streams; embeds remain as backup.
           </p>
         )}
 
