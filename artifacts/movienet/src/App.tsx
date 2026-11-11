@@ -216,6 +216,7 @@ function ClerkProviderWithRoutes() {
                   <Route path="/watch" component={WatchPage} />
                   <Route path="/download" component={DownloadPage} />
                   <Route path="/about" component={About} />
+<Route path="/admin" component={Admin} />
 <Route path="/genre/:name" component={GenrePage} />
                   <Route path="/contact" component={Contact} />
                   <Route>
