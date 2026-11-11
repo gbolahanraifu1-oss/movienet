@@ -1,3 +1,6 @@
+import { AnnouncementBanner } from "./AnnouncementBanner";
+// ...
+<AnnouncementBanner />
 import { Link, useLocation } from "wouter";
 import { Show, useUser, useClerk } from "@clerk/react";
 import { Search, Popcorn, Flame, Calendar, Trophy, PlaySquare, Menu, X, User } from "lucide-react";
