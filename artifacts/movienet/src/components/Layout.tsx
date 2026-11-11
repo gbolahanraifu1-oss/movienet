@@ -1,6 +1,4 @@
 import { AnnouncementBanner } from "./AnnouncementBanner";
-// ...
-<AnnouncementBanner />
 import { Link, useLocation } from "wouter";
 import { Show, useUser, useClerk } from "@clerk/react";
 import { Search, Popcorn, Flame, Calendar, Trophy, PlaySquare, Menu, X, User } from "lucide-react";
@@ -204,6 +202,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </header>
+      <AnnouncementBanner />
+
 
       {/* Main Content */}
       <main className="flex-1 relative z-10 w-full pt-16">
