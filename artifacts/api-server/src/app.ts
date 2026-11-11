@@ -1,4 +1,4 @@
-import { registerNkiri } from "./lib/nkiri.js";
+import { registerMedia } from "./lib/media.js";
 import express from "express";
 import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
@@ -44,7 +44,7 @@ const clerkPublishableKey =
 app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 
 // Nkiri download proxy
-registerNkiri(app);
+registerMedia(app);
 
 app.use("/api", router);
 
