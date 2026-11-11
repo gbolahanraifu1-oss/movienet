@@ -1,7 +1,6 @@
 /**
- * Admin API routes
- * Protect with ADMIN_USER_IDS=user_xxx,user_yyy (Clerk user ids)
- * Optional: CLERK_SECRET_KEY for user list/ban
+ * Admin API — no @clerk/backend package required (uses Clerk REST + fetch).
+ * Env: ADMIN_USER_IDS, CLERK_SECRET_KEY, DATABASE_URL
  */
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
@@ -38,18 +37,30 @@ function getDb() {
   return (dbPromise ??= import("@workspace/db"));
 }
 
-async function clerkClient() {
+async function clerkFetch(path: string, init?: RequestInit) {
   const key = process.env.CLERK_SECRET_KEY;
-  if (!key) return null;
+  if (!key) throw new Error("CLERK_SECRET_KEY missing");
+  const r = await fetch(`https://api.clerk.com/v1${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  const text = await r.text();
+  let data: any = null;
   try {
-    const { createClerkClient } = await import("@clerk/backend");
-    return createClerkClient({ secretKey: key });
+    data = text ? JSON.parse(text) : null;
   } catch {
-    return null;
+    data = { raw: text };
   }
+  if (!r.ok) {
+    throw new Error(data?.errors?.[0]?.message || data?.message || `Clerk ${r.status}`);
+  }
+  return data;
 }
 
-/** Who am I / is admin */
 router.get("/admin/me", (req: any, res: any) => {
   const auth = getAuth(req);
   const userId = auth?.userId || null;
@@ -59,32 +70,25 @@ router.get("/admin/me", (req: any, res: any) => {
   });
 });
 
-/** List users (Clerk) */
 router.get("/admin/users", requireAdmin, async (req: any, res: any) => {
   try {
-    const client = await clerkClient();
-    if (!client) {
-      res.status(503).json({
-        error: "CLERK_SECRET_KEY not configured — cannot list users",
-      });
-      return;
-    }
     const limit = Math.min(100, Number(req.query.limit) || 50);
     const offset = Number(req.query.offset) || 0;
-    const list = await client.users.getUserList({ limit, offset });
+    const data = await clerkFetch(`/users?limit=${limit}&offset=${offset}`);
+    const list = Array.isArray(data) ? data : data?.data || [];
     res.json({
-      users: list.data.map((u) => ({
+      users: list.map((u: any) => ({
         id: u.id,
-        email: u.emailAddresses?.[0]?.emailAddress || null,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        imageUrl: u.imageUrl,
-        createdAt: u.createdAt,
-        lastSignInAt: u.lastSignInAt,
-        banned: u.banned,
-        publicMetadata: u.publicMetadata,
+        email: u.email_addresses?.[0]?.email_address || null,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        imageUrl: u.image_url,
+        createdAt: u.created_at,
+        lastSignInAt: u.last_sign_in_at,
+        banned: !!u.banned,
+        publicMetadata: u.public_metadata,
       })),
-      total: list.totalCount,
+      total: data?.total_count ?? list.length,
     });
   } catch (e: any) {
     req.log?.error?.({ err: e }, "admin users");
@@ -92,25 +96,27 @@ router.get("/admin/users", requireAdmin, async (req: any, res: any) => {
   }
 });
 
-/** Ban / unban */
 router.post("/admin/users/:id/ban", requireAdmin, async (req: any, res: any) => {
   try {
-    const client = await clerkClient();
-    if (!client) {
-      res.status(503).json({ error: "CLERK_SECRET_KEY missing" });
-      return;
-    }
     const ban = req.body?.ban !== false;
-    if (ban) await client.users.banUser(req.params.id);
-    else await client.users.unbanUser(req.params.id);
+    if (ban) {
+      await clerkFetch(`/users/${encodeURIComponent(req.params.id)}/ban`, {
+        method: "POST",
+        body: "{}",
+      });
+    } else {
+      await clerkFetch(`/users/${encodeURIComponent(req.params.id)}/unban`, {
+        method: "POST",
+        body: "{}",
+      });
+    }
     res.json({ ok: true, banned: ban });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Ban failed" });
   }
 });
 
-/** Public: active announcements for banner */
-router.get("/announcements", async (req: any, res: any) => {
+router.get("/announcements", async (_req: any, res: any) => {
   try {
     const { db, eq, announcementsTable } = await getDb();
     const rows = await db
@@ -126,13 +132,11 @@ router.get("/announcements", async (req: any, res: any) => {
         createdAt: r.createdAt?.toISOString?.() || r.createdAt,
       }))
     );
-  } catch (e: any) {
-    // Graceful if table not migrated yet
+  } catch {
     res.json([]);
   }
 });
 
-/** Admin: all announcements */
 router.get("/admin/announcements", requireAdmin, async (req: any, res: any) => {
   try {
     const { db, announcementsTable } = await getDb();
@@ -146,14 +150,11 @@ router.get("/admin/announcements", requireAdmin, async (req: any, res: any) => {
     );
   } catch (e: any) {
     res.status(500).json({
-      error:
-        e?.message ||
-        "DB error — run migration for announcements table",
+      error: e?.message || "DB error — run announcements SQL migration",
     });
   }
 });
 
-/** Create announcement */
 router.post("/admin/announcements", requireAdmin, async (req: any, res: any) => {
   try {
     const { title, body, level = "info", active = true } = req.body || {};
@@ -181,12 +182,11 @@ router.post("/admin/announcements", requireAdmin, async (req: any, res: any) => 
   }
 });
 
-/** Toggle / update */
 router.patch("/admin/announcements/:id", requireAdmin, async (req: any, res: any) => {
   try {
     const id = Number(req.params.id);
     const { db, eq, announcementsTable } = await getDb();
-    const patch: any = { updatedAt: new Date() };
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (req.body?.title != null) patch.title = String(req.body.title).slice(0, 200);
     if (req.body?.body != null) patch.body = String(req.body.body).slice(0, 5000);
     if (req.body?.level != null) patch.level = req.body.level;
