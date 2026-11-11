@@ -1,5 +1,5 @@
 /**
- * Admin API — no @clerk/backend package required (uses Clerk REST + fetch).
+ * Admin API — Clerk REST via global fetch (typed to avoid Express Response clash).
  * Env: ADMIN_USER_IDS, CLERK_SECRET_KEY, DATABASE_URL
  */
 import { Router } from "express";
@@ -37,18 +37,29 @@ function getDb() {
   return (dbPromise ??= import("@workspace/db"));
 }
 
-async function clerkFetch(path: string, init?: RequestInit) {
+/** Avoid Express overwriting DOM fetch Response / RequestInit types */
+async function clerkFetch(
+  path: string,
+  init?: { method?: string; body?: string }
+): Promise<any> {
   const key = process.env.CLERK_SECRET_KEY;
   if (!key) throw new Error("CLERK_SECRET_KEY missing");
-  const r = await fetch(`https://api.clerk.com/v1${path}`, {
-    ...init,
+
+  const fetchFn = (globalThis as any).fetch as (
+    input: string,
+    init?: any
+  ) => Promise<any>;
+
+  const r = await fetchFn(`https://api.clerk.com/v1${path}`, {
+    method: init?.method || "GET",
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
-      ...(init?.headers || {}),
     },
+    body: init?.body,
   });
-  const text = await r.text();
+
+  const text: string = await r.text();
   let data: any = null;
   try {
     data = text ? JSON.parse(text) : null;
@@ -56,7 +67,9 @@ async function clerkFetch(path: string, init?: RequestInit) {
     data = { raw: text };
   }
   if (!r.ok) {
-    throw new Error(data?.errors?.[0]?.message || data?.message || `Clerk ${r.status}`);
+    throw new Error(
+      data?.errors?.[0]?.message || data?.message || `Clerk ${r.status}`
+    );
   }
   return data;
 }
