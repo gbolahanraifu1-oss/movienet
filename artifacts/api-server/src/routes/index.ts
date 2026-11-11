@@ -9,7 +9,7 @@ import remindersRouter from "./reminders.js";
 import searchRouter from "./search.js";
 import sportsRouter from "./sports.js";
 import trendingRouter from "./trending.js";
-import adminRouter from "./admin.js";
+import adminRouter from "./adminRoutes.js";
 
 const router = Router();
 
