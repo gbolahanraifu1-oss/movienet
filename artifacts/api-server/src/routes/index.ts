@@ -9,6 +9,7 @@ import remindersRouter from "./reminders.js";
 import searchRouter from "./search.js";
 import sportsRouter from "./sports.js";
 import trendingRouter from "./trending.js";
+import adminRouter from "./admin.js";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use(remindersRouter);
 router.use(searchRouter);
 router.use(sportsRouter);
 router.use(trendingRouter);
+router.use(adminRouter);
 
 export default router;
