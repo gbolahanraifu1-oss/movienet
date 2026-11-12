@@ -11,18 +11,21 @@ import { format } from "date-fns";
 import { Show } from "@clerk/react";
 import { useToast } from "@/hooks/use-toast";
 
-export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string }) {
+export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', id: string }) {
   const { toast } = useToast();
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   
   // Conditionally fetch based on type
   const { data: movieData, isLoading: movieLoading } = useGetMovie(id, { query: { enabled: type === 'movie', queryKey: getGetMovieQueryKey(id) } });
-  const { data: animeData, isLoading: animeLoading } = useGetAnime(id, { query: { enabled: type === 'anime', queryKey: getGetAnimeQueryKey(id) } });
+  const isTv = type === 'anime' || type === 'series';
+  const { data: animeData, isLoading: animeLoading } = useGetAnime(id, { query: { enabled: isTv, queryKey: getGetAnimeQueryKey(id) } });
 
   const createReminder = useCreateReminder();
 
   const data = type === 'movie' ? movieData : animeData;
   const isLoading = type === 'movie' ? movieLoading : animeLoading;
+  // Scraper cluster: anime → anime, series → series, movie → movie
+  const scraperSource = type === 'anime' ? 'anime' : type === 'series' ? 'series' : 'movie';
 
   // Anime seasons (extra fields from API; typed loosely until schema regen)
   const seasons: Array<{
@@ -102,10 +105,11 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
               {data.isReleased ? (
                 <Button asChild className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 text-lg shadow-lg shadow-primary/20">
                   <Link href={`/watch?${new URLSearchParams({
-                    type: type === "anime" ? "anime" : "movie",
+                    type: scraperSource,
+                    source: scraperSource,
                     id: String(id),
                     title: data.title || "",
-                    ...(type === "anime" ? { season: "1", episode: "1" } : {}),
+                    ...(isTv ? { season: "1", episode: "1" } : {}),
                     back: `/title/${type}/${id}`,
                   }).toString()}`}>
                     <Play className="w-5 h-5 mr-2 fill-current" /> Watch Now
@@ -229,7 +233,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
             )}
 
             {/* Anime / series: season + episode selection */}
-            {type === "anime" && seasons.length > 0 && (
+            {isTv && seasons.length > 0 && (
               <div className="mt-8 space-y-4">
                 <div className="flex items-center gap-2">
                   <ListVideo className="w-5 h-5 text-primary" />
@@ -273,8 +277,8 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
                         const ep = i + 1;
                         const epLabel = `S${String(activeSeason.seasonNumber).padStart(2, "0")}E${String(ep).padStart(2, "0")}`;
                         const watchParams = new URLSearchParams({
-                          type: "anime",
-                          source: "anime",
+                          type: scraperSource,
+                          source: scraperSource,
                           id: String(id),
                           title: String(data.title || ""),
                           season: String(activeSeason.seasonNumber),
@@ -282,8 +286,8 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
                           back: `/title/${type}/${id}`,
                         });
                         const dlParams = new URLSearchParams({
-                          type: "anime",
-                          source: "anime",
+                          type: scraperSource,
+                          source: scraperSource,
                           id: String(id),
                           title: String(data.title || ""),
                           season: String(activeSeason.seasonNumber),
