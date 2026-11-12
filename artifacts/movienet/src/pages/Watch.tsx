@@ -33,14 +33,12 @@ const EMBED_SOURCES: EmbedSource[] = [
   },
 ];
 
-/** Always HTTPS — never allow http:// (mixed content block) */
 const VPS_HTTPS = "https://movienetapi.hidenplay.net";
 
-/** Required for /stream — set VITE_STREAM_API_SECRET on Vercel */
 const VPS_SECRET = String(
   import.meta.env.VITE_STREAM_API_SECRET ||
     import.meta.env.VITE_SCRAPER_API_SECRET ||
-    ""
+    "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm" // Fallback if env fails
 ).trim();
 
 function loadVideoJs(): Promise<any> {
@@ -62,10 +60,7 @@ function isDirectFile(url: string): boolean {
   return /\.(mp4|webm|mkv|mov)(\?|$)/i.test(url);
 }
 
-function buildPlayUrl(
-  streamUrl: string,
-  referer: string
-): { playUrl: string; type: string } {
+function buildPlayUrl(streamUrl: string, referer: string): { playUrl: string; type: string } {
   if (isDirectFile(streamUrl)) {
     return { playUrl: streamUrl, type: "video/mp4" };
   }
@@ -73,42 +68,26 @@ function buildPlayUrl(
   params.set("url", streamUrl);
   params.set("referer", referer || "https://iptv-org.github.io/");
   if (VPS_SECRET) params.set("secret", VPS_SECRET);
+  
   let playUrl = `${VPS_HTTPS}/stream?${params.toString()}`;
-  // Belt-and-suspenders: never emit http:// to the player
   playUrl = playUrl.replace(/^http:\/\//i, "https://");
-  return {
-    playUrl,
-    type: "application/x-mpegURL",
-  };
+  
+  return { playUrl, type: "application/x-mpegURL" };
 }
 
 export function WatchPage() {
-  const params = useMemo(
-    () => new URLSearchParams(window.location.search),
-    []
-  );
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   const rawType = (params.get("type") || "movie").toLowerCase();
-  const type = (
-    rawType === "tv" || rawType === "anime" ? "tv" : "movie"
-  ) as "movie" | "tv";
-  const isAnime =
-    rawType === "anime" ||
-    params.get("source") === "anime" ||
-    (rawType === "tv" && params.get("source") === "anime");
+  const type = (rawType === "tv" || rawType === "anime" ? "tv" : "movie") as "movie" | "tv";
+  const isAnime = rawType === "anime" || params.get("source") === "anime";
   const isSports = rawType === "sports" || params.get("source") === "sports";
   const isSerial = isAnime || rawType === "tv";
   const id = params.get("id") || "";
   const title = params.get("title") || "Now Playing";
   const season = Math.max(1, Number(params.get("season") || 1));
   const episode = Math.max(1, Number(params.get("episode") || 1));
-  const back =
-    params.get("back") ||
-    (id
-      ? `/title/${isAnime ? "anime" : type === "tv" ? "anime" : "movie"}/${id}`
-      : isSports
-        ? "/sports"
-        : "/");
+  const back = params.get("back") || (id ? `/title/${isAnime ? "anime" : type === "tv" ? "anime" : "movie"}/${id}` : isSports ? "/sports" : "/");
 
   const [mode, setMode] = useState<"player" | "embed">("player");
   const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
@@ -119,8 +98,7 @@ export function WatchPage() {
   const playerRef = useRef<any>(null);
 
   const embed = EMBED_SOURCES.find((s) => s.id === sourceId) || EMBED_SOURCES[0];
-  const embedUrl =
-    id && !isSports ? embed.build({ type, id, season, episode }) : "";
+  const embedUrl = id && !isSports ? embed.build({ type, id, season, episode }) : "";
 
   useEffect(() => {
     if (mode !== "player" || !playerLoading) return;
@@ -139,13 +117,8 @@ export function WatchPage() {
       setElapsed(0);
 
       try {
-        if (!isDirectFile("x.m3u8") && !VPS_SECRET && !isSports === false) {
-          /* secret checked when building HLS */
-        }
-
         const q = new URLSearchParams();
-        const searchTitle =
-          title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
+        const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
         if (isSports) q.set("source", "sports");
         else if (isAnime || isSerial) {
@@ -154,61 +127,47 @@ export function WatchPage() {
           q.set("season", String(season));
         }
         if (id && !isSports) q.set("tmdb", id);
+        if (VPS_SECRET) q.set("secret", VPS_SECRET);
 
-        const mediaRes = await fetch(`/api/media?${q.toString()}`);
+        // BYPASS VERCEL: Hit VPS directly
+        const vpsUrl = `${VPS_HTTPS}/api/download?${q.toString()}`;
+        const mediaRes = await fetch(vpsUrl);
         const media = await mediaRes.json().catch(() => ({}));
+        
         if (destroyed) return;
 
         if (!mediaRes.ok || !media?.success) {
-          setPlayerError(
-            isSports
-              ? "This channel is unavailable right now. Try another."
-              : "Stream unavailable. Try another server below."
-          );
+          setPlayerError(isSports ? "This channel is unavailable right now." : "Stream unavailable.");
           setPlayerLoading(false);
           return;
         }
 
         const streamUrl: string | undefined =
           media?.stream?.url ||
-          (media?.mode === "hls" || media?.type === "hls"
-            ? media?.download
-            : undefined) ||
+          (media?.mode === "hls" || media?.type === "hls" ? media?.download : undefined) ||
           (typeof media?.download === "string" ? media.download : undefined);
 
-        const referer: string =
-          media?.stream?.referer ||
-          (isSports ? "https://iptv-org.github.io/" : "https://megaplay.buzz/");
+        const referer: string = media?.stream?.referer || (isSports ? "https://iptv-org.github.io/" : "https://megaplay.buzz/");
 
         if (!streamUrl) {
-          setPlayerError(
-            isSports
-              ? "This channel is unavailable right now. Try another."
-              : "Stream unavailable. Try another server below."
-          );
+          setPlayerError("Stream unavailable.");
           setPlayerLoading(false);
           return;
         }
 
         if (!isDirectFile(streamUrl) && !VPS_SECRET) {
-          setPlayerError(
-            "Player is not configured. Add VITE_STREAM_API_SECRET on the host."
-          );
+          setPlayerError("Player is not configured. Add VITE_STREAM_API_SECRET.");
           setPlayerLoading(false);
           return;
         }
 
         const { playUrl, type: mime } = buildPlayUrl(streamUrl, referer);
-
         const videojs = await loadVideoJs();
+        
         if (destroyed || !videoRef.current) return;
 
         if (playerRef.current) {
-          try {
-            playerRef.current.dispose();
-          } catch {
-            /* */
-          }
+          try { playerRef.current.dispose(); } catch {}
           playerRef.current = null;
         }
 
@@ -218,33 +177,21 @@ export function WatchPage() {
           preload: "auto",
           fluid: true,
           liveui: isSports,
-          html5: {
-            vhs: { overrideNative: true },
-            nativeAudioTracks: false,
-            nativeVideoTracks: false,
-          },
+          html5: { vhs: { overrideNative: true } },
           sources: [{ src: playUrl, type: mime }],
         });
+        
         playerRef.current = player;
+        
         player.on("error", () => {
-          setPlayerError(
-            isSports
-              ? "This channel is unavailable right now. Try another."
-              : "Playback failed. Try another server below."
-          );
+          setPlayerError("Playback failed. Try another server below.");
         });
         player.on("playing", () => {
           setPlayerLoading(false);
           setPlayerError("");
         });
       } catch {
-        if (!destroyed) {
-          setPlayerError(
-            isSports
-              ? "This channel is unavailable right now. Try another."
-              : "Something went wrong. Try another server below."
-          );
-        }
+        if (!destroyed) setPlayerError("Something went wrong.");
       } finally {
         if (!destroyed) setPlayerLoading(false);
       }
@@ -254,11 +201,7 @@ export function WatchPage() {
     return () => {
       destroyed = true;
       if (playerRef.current) {
-        try {
-          playerRef.current.dispose();
-        } catch {
-          /* */
-        }
+        try { playerRef.current.dispose(); } catch {}
         playerRef.current = null;
       }
     };
@@ -267,10 +210,7 @@ export function WatchPage() {
   if (!id && !isSports) {
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center p-6 text-zinc-400">
-        Missing title.{" "}
-        <Link href="/" className="text-primary ml-2">
-          Home
-        </Link>
+        Missing title. <Link href="/" className="text-primary ml-2">Home</Link>
       </div>
     );
   }
@@ -278,32 +218,16 @@ export function WatchPage() {
   return (
     <div className="min-h-[100dvh] bg-black flex flex-col">
       <div className="flex items-center gap-3 px-3 py-2 border-b border-white/10 bg-zinc-950/90">
-        <Link
-          href={back}
-          className="flex items-center gap-1.5 text-zinc-400 hover:text-white text-sm shrink-0"
-        >
+        <Link href={back} className="flex items-center gap-1.5 text-zinc-400 hover:text-white text-sm shrink-0">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <div className="min-w-0 flex-1">
           <p className="text-white text-sm font-semibold truncate">{title}</p>
-          {type === "tv" && !isSports && (
-            <p className="text-zinc-500 text-xs">
-              S{season} · E{episode}
-            </p>
-          )}
-          {isSports && (
-            <p className="text-zinc-500 text-xs flex items-center gap-1">
-              <Radio className="w-3 h-3" /> Live
-            </p>
-          )}
+          {type === "tv" && !isSports && <p className="text-zinc-500 text-xs">S{season} · E{episode}</p>}
+          {isSports && <p className="text-zinc-500 text-xs flex items-center gap-1"><Radio className="w-3 h-3" /> Live</p>}
         </div>
         {mode === "embed" && embedUrl && (
-          <a
-            href={embedUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-zinc-500 hover:text-white p-2"
-          >
+          <a href={embedUrl} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-white p-2">
             <ExternalLink className="w-4 h-4" />
           </a>
         )}
@@ -316,37 +240,14 @@ export function WatchPage() {
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-zinc-300 text-sm bg-black/80 px-4">
                 <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 <span className="font-medium text-white">Loading…</span>
-                <span className="text-zinc-500 text-xs tabular-nums">
-                  {elapsed}s
-                </span>
-                {!isSports && embedUrl && (
-                  <button
-                    type="button"
-                    className="mt-1 text-xs text-primary underline underline-offset-2"
-                    onClick={() => setMode("embed")}
-                  >
-                    Switch server
-                  </button>
-                )}
+                <span className="text-zinc-500 text-xs tabular-nums">{elapsed}s</span>
               </div>
             )}
-            <video
-              ref={videoRef}
-              className="video-js vjs-big-play-centered vjs-fluid"
-              playsInline
-            />
+            <video ref={videoRef} className="video-js vjs-big-play-centered vjs-fluid" playsInline />
           </div>
         )}
         {mode === "embed" && embedUrl && (
-          <iframe
-            key={embedUrl}
-            src={embedUrl}
-            title={title}
-            className="absolute inset-0 w-full h-full border-0"
-            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-            allowFullScreen
-            referrerPolicy="origin"
-          />
+          <iframe key={embedUrl} src={embedUrl} title={title} className="absolute inset-0 w-full h-full border-0" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen referrerPolicy="origin" />
         )}
       </div>
 
@@ -359,62 +260,15 @@ export function WatchPage() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setMode("player");
-              setPlayerError("");
-            }}
-            className={
-              "px-3 py-1.5 rounded-full text-xs font-bold border " +
-              (mode === "player"
-                ? "bg-primary text-white border-primary"
-                : "bg-zinc-900 text-zinc-300 border-white/10")
-            }
-          >
+          <button type="button" onClick={() => { setMode("player"); setPlayerError(""); }} className={"px-3 py-1.5 rounded-full text-xs font-bold border " + (mode === "player" ? "bg-primary text-white border-primary" : "bg-zinc-900 text-zinc-300 border-white/10")}>
             MovieNet
           </button>
           {!isSports && embedUrl && (
-            <button
-              type="button"
-              onClick={() => setMode("embed")}
-              className={
-                "px-3 py-1.5 rounded-full text-xs font-bold border " +
-                (mode === "embed"
-                  ? "bg-primary text-white border-primary"
-                  : "bg-zinc-900 text-zinc-300 border-white/10")
-              }
-            >
+            <button type="button" onClick={() => setMode("embed")} className={"px-3 py-1.5 rounded-full text-xs font-bold border " + (mode === "embed" ? "bg-primary text-white border-primary" : "bg-zinc-900 text-zinc-300 border-white/10")}>
               Other servers
             </button>
           )}
         </div>
-
-        {mode === "embed" && !isSports && (
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-2">
-              Server
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {EMBED_SOURCES.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSourceId(s.id)}
-                  className={
-                    "px-3 py-1.5 rounded-full text-xs font-bold border " +
-                    (s.id === sourceId
-                      ? "bg-primary text-white border-primary"
-                      : "bg-zinc-900 text-zinc-300 border-white/10")
-                  }
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         <AdSlot label="Advertisement" />
       </div>
     </div>
