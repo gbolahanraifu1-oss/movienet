@@ -1,24 +1,20 @@
 /**
- * Proxy to scraper API (download).
- * Env: NKIRI_API_URL=https://movienetapi.hidenplay.net
+ * Download proxy. Env: NKIRI_API_URL=https://movienetapi.hidenplay.net
  */
 const DEFAULT_API = "https://movienetapi.hidenplay.net";
 
 function normalizeApiBase(raw: string): string {
-  let u = (raw || DEFAULT_API).trim().replace(/\/$/, "");
-  if (u.startsWith("http://")) {
-    u = "https://" + u.slice("http://".length);
-  }
+  let u = String(raw || DEFAULT_API).trim().replace(/\/$/, "");
+  u = u.replace(/^http:\/\//i, "https://");
+  if (!/^https:\/\//i.test(u)) u = "https://" + u.replace(/^\/+/, "");
   u = u
-    .replace(/https?:\/\/pat\.hidencloud\.com:?\d*/gi, DEFAULT_API)
-    .replace(/https?:\/\/[^/]*hidencloud\.com:?\d*/gi, DEFAULT_API);
+    .replace(/https:\/\/pat\.hidencloud\.com:?\d*/gi, DEFAULT_API)
+    .replace(/https:\/\/[^/]*hidencloud\.com:?\d*/gi, DEFAULT_API);
   return u.replace(/\/$/, "") || DEFAULT_API;
 }
 
 const NKIRI_API = normalizeApiBase(
-  process.env.NKIRI_API_URL ||
-    process.env.SCRAPER_API_URL ||
-    DEFAULT_API
+  process.env.NKIRI_API_URL || process.env.SCRAPER_API_URL || DEFAULT_API
 );
 
 type FetchRes = { ok: boolean; status: number; json: () => Promise<any> };
@@ -27,12 +23,10 @@ export function registerNkiri(app: any): void {
   app.get("/api/nkiri", async (req: any, res: any): Promise<void> => {
     const q = String(req.query?.q || "").trim();
     const tmdb = String(req.query?.tmdb || "").trim();
-
     if (!q && !tmdb) {
       res.status(400).json({ success: false, error: "Missing q or tmdb" });
       return;
     }
-
     try {
       let url: string;
       if (tmdb) {
@@ -43,13 +37,10 @@ export function registerNkiri(app: any): void {
       } else {
         url = `${NKIRI_API}/api/download?q=${encodeURIComponent(q)}`;
       }
-
       const r = (await fetch(url, {
         signal: AbortSignal.timeout(90000),
       })) as unknown as FetchRes;
-
       const data = await r.json().catch(() => ({}));
-
       if (data?.download) {
         res.json({
           success: true,
@@ -68,7 +59,6 @@ export function registerNkiri(app: any): void {
         });
         return;
       }
-
       res.status(502).json({
         success: false,
         error: data?.error || "No download link",
