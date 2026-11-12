@@ -8,6 +8,18 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const LEAGUES = ["All", "NBA", "NFL", "EPL", "MLB", "NHL", "La Liga"];
 
+
+const LIVE_CHANNELS = [
+  { title: "ESPN", q: "ESPN" },
+  { title: "Star Sports 1", q: "Star Sports 1" },
+  { title: "Star Sports 2", q: "Star Sports 2" },
+  { title: "Sky Sports Main Event", q: "Sky Sports Main Event" },
+  { title: "beIN Sports", q: "beIN Sports" },
+  { title: "NBA TV", q: "NBA TV" },
+  { title: "NFL Network", q: "NFL Network" },
+  { title: "Fox Sports 1", q: "Fox Sports 1" },
+];
+
 export function Sports() {
   const { data: liveScores, isLoading: scoresLoading } = useGetLiveScores({});
   const { data: upcoming, isLoading: upcomingLoading } = useGetSportsEvents({});
@@ -29,6 +41,30 @@ export function Sports() {
         </div>
 
         <AdSlot />
+
+        
+        <section className="mb-10 space-y-4">
+          <h2 className="text-xl font-display font-bold text-white flex items-center gap-2">
+            <Radio className="w-5 h-5 text-primary" /> Live TV / Streams
+          </h2>
+          <p className="text-zinc-500 text-sm">Opens MovieNet player via your VPS sports scraper</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {LIVE_CHANNELS.map((ch) => (
+              <a
+                key={ch.q}
+                href={`/watch?${new URLSearchParams({
+                  type: "sports",
+                  source: "sports",
+                  title: ch.q,
+                  back: "/sports",
+                }).toString()}`}
+                className="rounded-xl border border-white/10 bg-zinc-900/60 hover:bg-zinc-800 px-4 py-4 text-sm font-semibold text-white text-center transition-colors"
+              >
+                {ch.title}
+              </a>
+            ))}
+          </div>
+        </section>
 
         <Tabs defaultValue="All" className="w-full">
           <TabsList className="bg-zinc-900 border border-white/5 mb-6 overflow-x-auto justify-start inline-flex w-full md:w-auto hide-scrollbar">
