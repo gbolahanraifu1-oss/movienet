@@ -5,6 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 const COUNTDOWN = 5;
+const VPS_HTTPS = "https://movienetapi.hidenplay.net";
+const VPS_SECRET = String(
+  import.meta.env.VITE_STREAM_API_SECRET ||
+    import.meta.env.VITE_SCRAPER_API_SECRET ||
+    "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm" // Fallback
+).trim();
 
 export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
@@ -15,18 +21,14 @@ export function DownloadPage() {
   const tmdbId = params.get("id") ?? "";
   const year = params.get("year") ?? "";
   const type = (params.get("type") || "movie").toLowerCase();
-  const source =
-    (params.get("source") || (type === "anime" ? "anime" : "")).toLowerCase();
+  const source = (params.get("source") || (type === "anime" ? "anime" : "")).toLowerCase();
   const season = params.get("season") || "1";
   const episode = params.get("episode") || params.get("ep") || "";
 
-  const cleanTitle =
-    rawTitle.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || rawTitle;
+  const cleanTitle = rawTitle.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || rawTitle;
 
   const [seconds, setSeconds] = useState(COUNTDOWN);
-  const [status, setStatus] = useState<
-    "countdown" | "preparing" | "done" | "error"
-  >("countdown");
+  const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">("countdown");
   const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [finalUrl, setFinalUrl] = useState("");
@@ -67,24 +69,23 @@ export function DownloadPage() {
         if (episode) q.set("episode", episode);
         if (season) q.set("season", season);
       }
+      if (VPS_SECRET) q.set("secret", VPS_SECRET);
 
-      let res = await fetch(`/api/media?${q.toString()}`);
+      // BYPASS VERCEL: Hit VPS directly
+      let res = await fetch(`${VPS_HTTPS}/api/download?${q.toString()}`);
       let data = await res.json().catch(() => ({}));
 
+      // Fallback for Nkiri if AnimePahe fails and it's not anime
       if ((!res.ok || !data?.success) && source !== "anime" && type !== "anime") {
         const q2 = new URLSearchParams();
         q2.set("q", cleanTitle);
-        if (tmdbId) q2.set("tmdb", tmdbId);
-        if (year) q2.set("year", year);
-        res = await fetch(`/api/nkiri?${q2.toString()}`);
+        q2.set("source", "nkiri");
+        if (VPS_SECRET) q2.set("secret", VPS_SECRET);
+        res = await fetch(`${VPS_HTTPS}/api/download?${q2.toString()}`);
         data = await res.json().catch(() => ({}));
       }
 
-      const downloadUrl =
-        data?.downloadInfo?.url ||
-        data?.download ||
-        data?.sources?.[0]?.url ||
-        "";
+      const downloadUrl = data?.downloadInfo?.url || data?.download || data?.sources?.[0]?.url || "";
 
       if (!res.ok || !data?.success || !downloadUrl) {
         setStatus("error");
@@ -121,14 +122,10 @@ export function DownloadPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="min-w-0">
-            <p className="text-white font-semibold text-sm truncate">
-              {resolvedTitle}
-            </p>
+            <p className="text-white font-semibold text-sm truncate">{resolvedTitle}</p>
             <p className="text-zinc-500 text-xs">
               Download
-              {episode
-                ? ` · S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
-                : ""}
+              {episode ? ` · S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}` : ""}
             </p>
           </div>
         </div>
@@ -138,11 +135,7 @@ export function DownloadPage() {
         <div className="space-y-6">
           {poster && (
             <div className="flex justify-center">
-              <img
-                src={poster}
-                alt=""
-                className="w-28 rounded-xl border border-white/10 shadow-lg"
-              />
+              <img src={poster} alt="" className="w-28 rounded-xl border border-white/10 shadow-lg" />
             </div>
           )}
 
@@ -154,29 +147,18 @@ export function DownloadPage() {
                     {seconds}
                   </div>
                   <p className="text-white font-semibold">Preparing download</p>
-                  <p className="text-zinc-500 text-sm text-center">
-                    Your link will be ready shortly
-                  </p>
+                  <p className="text-zinc-500 text-sm text-center">Your link will be ready shortly</p>
                 </>
               )}
               {status === "preparing" && (
                 <>
                   <div className="w-14 h-14 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   <p className="text-white font-semibold text-lg">Downloading…</p>
-                  <p className="text-zinc-500 text-sm text-center tabular-nums">
-                    {elapsed}s
-                  </p>
+                  <p className="text-zinc-500 text-sm text-center tabular-nums">{elapsed}s</p>
                   <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all duration-1000"
-                      style={{
-                        width: `${Math.min(95, 10 + elapsed * 1.5)}%`,
-                      }}
-                    />
+                    <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${Math.min(95, 10 + elapsed * 1.5)}%` }} />
                   </div>
-                  <p className="text-zinc-600 text-xs text-center">
-                    Large files can take a minute or more
-                  </p>
+                  <p className="text-zinc-600 text-xs text-center">Large files can take a minute or more</p>
                 </>
               )}
               {status === "done" && (
@@ -186,12 +168,7 @@ export function DownloadPage() {
                   </div>
                   <p className="text-white font-semibold text-lg">Ready</p>
                   {finalUrl && (
-                    <a
-                      href={finalUrl}
-                      target="_blank"
-                      rel="noopener"
-                      className="flex items-center gap-2 bg-primary hover:bg-primary/90 rounded-full px-8 py-3 text-sm font-bold text-white"
-                    >
+                    <a href={finalUrl} target="_blank" rel="noopener" className="flex items-center gap-2 bg-primary hover:bg-primary/90 rounded-full px-8 py-3 text-sm font-bold text-white">
                       <Download className="w-4 h-4" /> Open download
                     </a>
                   )}
@@ -203,18 +180,9 @@ export function DownloadPage() {
                     <AlertCircle className="w-10 h-10 text-red-400" />
                   </div>
                   <p className="text-white font-semibold text-lg">Unavailable</p>
-                  <p className="text-zinc-400 text-sm text-center max-w-sm">
-                    {errorMsg}
-                  </p>
+                  <p className="text-zinc-400 text-sm text-center max-w-sm">{errorMsg}</p>
                   <div className="flex gap-3">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        startedRef.current = false;
-                        setSeconds(COUNTDOWN);
-                        setStatus("countdown");
-                      }}
-                    >
+                    <Button variant="secondary" onClick={() => { startedRef.current = false; setSeconds(COUNTDOWN); setStatus("countdown"); }}>
                       Try again
                     </Button>
                     <Button asChild variant="outline">
@@ -232,4 +200,3 @@ export function DownloadPage() {
     </div>
   );
 }
-
