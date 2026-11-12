@@ -7,7 +7,7 @@ const router = Router();
 /**
  * GET /api/series?region=all|kdrama|cdrama|jdrama|western&search=&page=&sort=
  * TV series excluding Animation (anime/cartoons).
- * Cards use type "anime" so existing /title/anime/:id works for seasons/episodes.
+ * Cards use type "series" → /title/series/:id (scraper source=series, not anime).
  */
 router.get("/series", async (req: any, res: any): Promise<void> => {
   try {
