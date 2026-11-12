@@ -1,22 +1,20 @@
 /**
- * Scraper + stream proxy.
- * Browser only talks to https://movienet.dpdns.org (same origin).
- * Server talks to SCRAPER over HTTPS.
- *
- * Env:
- *   NKIRI_API_URL=https://movienetapi.hidenplay.net
- *   SCRAPER_API_SECRET / NKIRI_API_SECRET / STREAM_API_SECRET
+ * Scraper API Proxy
+ * Server talks to VPS over HTTPS.
+ * Client talks to VPS directly for streams (to avoid Vercel 10s timeout/bandwidth limits).
  */
 const DEFAULT_API = "https://movienetapi.hidenplay.net";
 
+// FIX 1: Tell Vercel to allow up to 60 seconds for this route
+export const maxDuration = 60; 
+export const dynamic = 'force-dynamic';
+
 function normalizeApiBase(raw: string): string {
   let u = String(raw || DEFAULT_API).trim().replace(/\/$/, "");
-  // Always HTTPS — mixed content kills the player
   u = u.replace(/^http:\/\//i, "https://");
   if (!/^https:\/\//i.test(u)) {
     u = "https://" + u.replace(/^\/+/, "");
   }
-  // Legacy hosts
   u = u
     .replace(/https:\/\/pat\.hidencloud\.com:?\d*/gi, DEFAULT_API)
     .replace(/https:\/\/[^/]*hidencloud\.com:?\d*/gi, DEFAULT_API);
@@ -39,9 +37,6 @@ type FetchRes = {
   ok: boolean;
   status: number;
   json: () => Promise<any>;
-  headers?: { get?: (k: string) => string | null };
-  body?: any;
-  text?: () => Promise<string>;
 };
 
 export function registerMedia(app: any): void {
@@ -74,7 +69,7 @@ export function registerMedia(app: any): void {
       }
 
       const r = (await fetch(url, {
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(55000), // Max 55s to fit inside the 60s Vercel limit
       })) as unknown as FetchRes;
       const data = await r.json().catch(() => ({}));
 
@@ -86,7 +81,6 @@ export function registerMedia(app: any): void {
         return;
       }
 
-      // Prefer download file; expose stream for HLS
       res.json({
         success: true,
         title: data.title,
@@ -107,121 +101,25 @@ export function registerMedia(app: any): void {
   });
 
   /**
-   * Returns a SAME-ORIGIN play URL so the browser never hits http:// VPS.
-   * Video.js loads: /api/stream-proxy?url=...&referer=...
+   * FIX 2: Bypass Vercel entirely for video streams.
+   * Returns the direct VPS HTTPS URL to Video.js.
    */
   app.get("/api/play-hls", (req: any, res: any): void => {
     const raw = String(req.query?.url || "").trim();
-    const referer = String(
-      req.query?.referer || "https://megaplay.buzz/"
-    ).trim();
+    const referer = String(req.query?.referer || "https://megaplay.buzz/").trim();
+    
     if (!raw || !/^https?:\/\//i.test(raw)) {
       res.status(400).json({ success: false, error: "Missing or invalid url" });
       return;
     }
-    // Same-origin path — always HTTPS on movienet.dpdns.org
+
+    // Point DIRECTLY to the VPS, not Vercel's /api/stream-proxy
     const playUrl =
-      `/api/stream-proxy?url=${encodeURIComponent(raw)}` +
-      `&referer=${encodeURIComponent(referer)}`;
-    res.json({ success: true, playUrl, referer });
-  });
-
-  /**
-   * Server-side HLS proxy → VPS /stream (HTTPS) → player.
-   * Rewrites playlist segment lines back through this proxy.
-   */
-  app.get("/api/stream-proxy", async (req: any, res: any): Promise<void> => {
-    const raw = String(req.query?.url || "").trim();
-    const referer = String(
-      req.query?.referer || "https://megaplay.buzz/"
-    ).trim();
-    if (!raw || !/^https?:\/\//i.test(raw)) {
-      res.status(400).send("Missing url");
-      return;
-    }
-
-    const vpsStream =
       `${SCRAPER}/stream?url=${encodeURIComponent(raw)}` +
       (SECRET ? `&secret=${encodeURIComponent(SECRET)}` : "") +
       `&referer=${encodeURIComponent(referer)}`;
 
-    try {
-      const fetchFn = (globalThis as any).fetch as (
-        input: string,
-        init?: any
-      ) => Promise<any>;
-
-      const upstream = await fetchFn(vpsStream, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
-        },
-        signal: AbortSignal.timeout(60000),
-      });
-
-      if (!upstream.ok) {
-        res.status(upstream.status || 502).send("Upstream stream failed");
-        return;
-      }
-
-      const ct = String(
-        upstream.headers?.get?.("content-type") ||
-          upstream.headers?.["content-type"] ||
-          ""
-      ).toLowerCase();
-
-      const isPlaylist =
-        raw.includes(".m3u8") ||
-        ct.includes("mpegurl") ||
-        ct.includes("application/vnd.apple.mpegurl") ||
-        ct.includes("application/x-mpegurl");
-
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Cache-Control", "no-store");
-
-      if (isPlaylist) {
-        const text: string = await upstream.text();
-        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-
-        const base = new URL(raw);
-        const rewritten = text
-          .split("\n")
-          .map((line: string) => {
-            const t = line.trim();
-            if (!t || t.startsWith("#")) return line;
-            let abs = t;
-            if (!t.startsWith("http")) {
-              try {
-                abs = new URL(t, base).href;
-              } catch {
-                return line;
-              }
-            }
-            return `/api/stream-proxy?url=${encodeURIComponent(abs)}&referer=${encodeURIComponent(referer)}`;
-          })
-          .join("\n");
-
-        res.send(rewritten);
-        return;
-      }
-
-      // Binary segment / key / mp4
-      res.setHeader(
-        "Content-Type",
-        ct || "application/octet-stream"
-      );
-      if (upstream.body && typeof upstream.body.pipe === "function") {
-        upstream.body.pipe(res);
-      } else if (upstream.body && typeof upstream.body.getReader === "function") {
-        const buf = Buffer.from(await upstream.arrayBuffer());
-        res.send(buf);
-      } else {
-        const buf = Buffer.from(await upstream.arrayBuffer());
-        res.send(buf);
-      }
-    } catch (e: any) {
-      res.status(502).send(e?.message || "Stream proxy error");
-    }
+    res.json({ success: true, playUrl, referer });
   });
 
   app.get("/api/nkiri", async (req: any, res: any): Promise<void> => {
@@ -239,7 +137,7 @@ export function registerMedia(app: any): void {
       if (year) params.set("year", year);
 
       const r = (await fetch(`${SCRAPER}/api/download?${params.toString()}`, {
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(50000),
       })) as unknown as FetchRes;
       const data = await r.json().catch(() => ({}));
 
