@@ -79,15 +79,34 @@ export function WatchPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   const rawType = (params.get("type") || "movie").toLowerCase();
-  const type = (rawType === "tv" || rawType === "anime" ? "tv" : "movie") as "movie" | "tv";
-  const isAnime = rawType === "anime" || params.get("source") === "anime";
-  const isSports = rawType === "sports" || params.get("source") === "sports";
-  const isSerial = isAnime || rawType === "tv";
+  const rawSource = (params.get("source") || rawType).toLowerCase();
+  // Embeds: movie vs tv URL shape
+  const type = (
+    rawType === "tv" || rawType === "anime" || rawType === "series" || rawSource === "series"
+      ? "tv"
+      : "movie"
+  ) as "movie" | "tv";
+  // Scraper clusters — do NOT send western series to anime
+  const isAnime = rawType === "anime" || rawSource === "anime";
+  const isSeries =
+    !isAnime &&
+    (rawType === "series" ||
+      rawType === "tv" ||
+      rawSource === "series" ||
+      rawSource === "tv");
+  const isSports = rawType === "sports" || rawSource === "sports";
+  const scraperSource = isSports
+    ? "sports"
+    : isAnime
+      ? "anime"
+      : isSeries
+        ? "series"
+        : "movie";
   const id = params.get("id") || "";
   const title = params.get("title") || "Now Playing";
   const season = Math.max(1, Number(params.get("season") || 1));
   const episode = Math.max(1, Number(params.get("episode") || 1));
-  const back = params.get("back") || (id ? `/title/${isAnime ? "anime" : type === "tv" ? "anime" : "movie"}/${id}` : isSports ? "/sports" : "/");
+  const back = params.get("back") || (id ? `/title/${isAnime ? "anime" : isSeries ? "series" : "movie"}/${id}` : isSports ? "/sports" : "/");
 
   const [mode, setMode] = useState<"player" | "embed">("player");
   const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
@@ -120,9 +139,8 @@ export function WatchPage() {
         const q = new URLSearchParams();
         const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
-        if (isSports) q.set("source", "sports");
-        else if (isAnime || isSerial) {
-          q.set("source", "anime");
+        q.set("source", scraperSource);
+        if (isAnime || isSeries) {
           q.set("episode", String(episode));
           q.set("season", String(season));
         }
@@ -205,7 +223,7 @@ export function WatchPage() {
         playerRef.current = null;
       }
     };
-  }, [mode, id, title, episode, season, isAnime, isSports, isSerial]);
+  }, [mode, id, title, episode, season, isAnime, isSeries, isSports, scraperSource]);
 
   if (!id && !isSports) {
     return (
