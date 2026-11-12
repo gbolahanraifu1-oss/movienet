@@ -9,22 +9,30 @@ const COUNTDOWN = 5;
 export function DownloadPage() {
   const params = new URLSearchParams(window.location.search);
 
-  const title = params.get("title") ?? "Unknown Title";
+  const rawTitle = params.get("title") ?? "Unknown Title";
   const poster = params.get("poster") ?? "";
   const backHref = params.get("back") ?? "/";
   const tmdbId = params.get("id") ?? "";
   const year = params.get("year") ?? "";
+  const type = (params.get("type") || "movie").toLowerCase();
+  const source =
+    (params.get("source") || (type === "anime" ? "anime" : "")).toLowerCase();
+  const season = params.get("season") || "1";
+  const episode = params.get("episode") || params.get("ep") || "";
 
-  const cleanTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
+  // Clean "Show — S01E05" style titles for search
+  const cleanTitle =
+    rawTitle.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || rawTitle;
 
   const [seconds, setSeconds] = useState(COUNTDOWN);
-  const [status, setStatus] = useState<"countdown" | "preparing" | "done" | "error">(
-    "countdown"
-  );
+  const [status, setStatus] = useState<
+    "countdown" | "preparing" | "done" | "error"
+  >("countdown");
   const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [finalUrl, setFinalUrl] = useState("");
   const [resolvedTitle, setResolvedTitle] = useState(cleanTitle);
+  const [mode, setMode] = useState<"direct" | "redirect" | "">("");
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -35,7 +43,6 @@ export function DownloadPage() {
 
   useEffect(() => {
     if (status !== "preparing") return;
-    setElapsed(0);
     const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
   }, [status]);
@@ -49,32 +56,62 @@ export function DownloadPage() {
   async function startDownload() {
     setStatus("preparing");
     setErrorMsg("");
+    setElapsed(0);
 
     try {
       const q = new URLSearchParams();
-      if (tmdbId) q.set("tmdb", tmdbId);
       q.set("q", cleanTitle);
+      if (tmdbId) q.set("tmdb", tmdbId);
       if (year) q.set("year", year);
 
-      const res = await fetch(`/api/nkiri?${q.toString()}`);
-      const data = await res.json().catch(() => ({}));
+      // Serial / anime: force episode-aware scraper path
+      if (source === "anime" || type === "anime" || type === "tv") {
+        q.set("source", "anime");
+        if (episode) q.set("episode", episode);
+        if (season) q.set("season", season);
+      }
 
-      if (!res.ok || !data?.success || !data?.download) {
+      // Prefer /api/media (episode-aware). Fallback /api/nkiri for movies.
+      let res = await fetch(`/api/media?${q.toString()}`);
+      let data = await res.json().catch(() => ({}));
+
+      if ((!res.ok || !data?.success) && source !== "anime" && type !== "anime") {
+        const q2 = new URLSearchParams();
+        q2.set("q", cleanTitle);
+        if (tmdbId) q2.set("tmdb", tmdbId);
+        if (year) q2.set("year", year);
+        res = await fetch(`/api/nkiri?${q2.toString()}`);
+        data = await res.json().catch(() => ({}));
+      }
+
+      const downloadUrl =
+        data?.downloadInfo?.url ||
+        data?.download ||
+        data?.sources?.[0]?.url ||
+        "";
+
+      if (!res.ok || !data?.success || !downloadUrl) {
         setStatus("error");
         setErrorMsg(
           data?.error ||
-            "No download found. Try another title spelling or use Watch."
+            (episode
+              ? `No file for episode ${episode}. Try Watch or another episode.`
+              : "No download found. Try Watch or another title.")
         );
         return;
       }
 
-      const downloadUrl = String(data.download);
       if (data.title) setResolvedTitle(String(data.title));
-
-      setFinalUrl(downloadUrl);
+      setMode(
+        data?.downloadInfo?.mode === "redirect" || data?.mode === "redirect"
+          ? "redirect"
+          : "direct"
+      );
+      setFinalUrl(String(downloadUrl));
       setStatus("done");
+
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = String(downloadUrl);
       a.target = "_blank";
       a.rel = "noopener";
       document.body.appendChild(a);
@@ -82,74 +119,69 @@ export function DownloadPage() {
       a.remove();
     } catch (e: any) {
       setStatus("error");
-      setErrorMsg(e?.message || "Download failed");
+      setErrorMsg(e?.message || "Network error");
     }
   }
 
-  const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
-
   return (
     <div className="min-h-[100dvh] bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-lg">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-white text-sm mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to title
-        </Link>
+      <div className="border-b border-white/5 bg-zinc-950/80">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+          <Link href={backHref} className="text-zinc-400 hover:text-white">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm truncate">
+              {resolvedTitle}
+            </p>
+            <p className="text-zinc-500 text-xs">
+              Download
+              {episode
+                ? ` · S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
+                : ""}
+            </p>
+          </div>
+        </div>
+      </div>
 
+      <div className="container mx-auto px-4 py-10 max-w-lg">
         <div className="space-y-6">
-          <div className="flex gap-4 items-start">
-            {poster ? (
+          {poster && (
+            <div className="flex justify-center">
               <img
                 src={poster}
                 alt=""
-                className="w-20 h-28 object-cover rounded-lg border border-white/10"
+                className="w-28 rounded-xl border border-white/10 shadow-lg"
               />
-            ) : null}
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
-                Secure download
-              </p>
-              <h1 className="text-xl font-display font-bold text-white leading-snug">
-                {resolvedTitle}
-              </h1>
-              <p className="text-sm text-zinc-500 mt-1">Direct file · HD</p>
             </div>
-          </div>
+          )}
 
-          <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-8">
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-8">
             <div className="flex flex-col items-center gap-4">
               {status === "countdown" && (
                 <>
-                  <div className="w-20 h-20 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center text-3xl font-bold text-white tabular-nums">
+                  <div className="w-20 h-20 rounded-full border-2 border-primary flex items-center justify-center text-3xl font-bold text-primary">
                     {seconds}
                   </div>
-                  <p className="text-white font-semibold text-lg">Preparing</p>
-                  <p className="text-zinc-400 text-sm text-center">
-                    Your download starts in a moment.
+                  <p className="text-white font-semibold">Starting soon</p>
+                  <p className="text-zinc-500 text-sm text-center">
+                    Preparing a direct link
+                    {episode ? ` for episode ${episode}` : ""}…
                   </p>
                 </>
               )}
               {status === "preparing" && (
                 <>
-                  <div className="relative w-24 h-24">
-                    <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
-                    <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg tabular-nums">
-                      {elapsedLabel}
-                    </div>
-                  </div>
-                  <p className="text-white font-semibold text-lg">Locating file</p>
-                  <p className="text-zinc-400 text-sm text-center max-w-xs">
-                    Connecting to mirrors and resolving a direct link. This can
-                    take up to a minute — timer shows progress.
+                  <div className="w-14 h-14 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-white font-semibold">Finding file…</p>
+                  <p className="text-zinc-500 text-sm text-center">
+                    Scraping can take 15–90s · {elapsed}s elapsed
                   </p>
-                  <div className="w-full max-w-xs h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary/80 rounded-full transition-all duration-1000"
+                      className="h-full bg-primary transition-all duration-1000"
                       style={{
-                        width: `${Math.min(95, 8 + elapsed * 3)}%`,
+                        width: `${Math.min(95, 12 + elapsed * 2)}%`,
                       }}
                     />
                   </div>
@@ -157,10 +189,15 @@ export function DownloadPage() {
               )}
               {status === "done" && (
                 <>
-                  <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
                     <CheckCircle2 className="w-10 h-10 text-primary" />
                   </div>
                   <p className="text-white font-semibold text-lg">Ready</p>
+                  {mode === "redirect" && (
+                    <p className="text-zinc-500 text-xs text-center">
+                      Opens host page (Cloudflare / redirect)
+                    </p>
+                  )}
                   {finalUrl && (
                     <a
                       href={finalUrl}
@@ -179,7 +216,9 @@ export function DownloadPage() {
                     <AlertCircle className="w-10 h-10 text-red-400" />
                   </div>
                   <p className="text-white font-semibold text-lg">Unavailable</p>
-                  <p className="text-zinc-400 text-sm text-center max-w-sm">{errorMsg}</p>
+                  <p className="text-zinc-400 text-sm text-center max-w-sm">
+                    {errorMsg}
+                  </p>
                   <div className="flex gap-3">
                     <Button
                       variant="secondary"
