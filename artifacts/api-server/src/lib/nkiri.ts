@@ -1,10 +1,25 @@
 /**
- * Proxy to Nkiri VPS scraper.
- * Env: NKIRI_API_URL=http://pat.hidencloud.com:24622
+ * Proxy to scraper API (download).
+ * Env: NKIRI_API_URL=https://movienetapi.hidenplay.net
  */
-const NKIRI_API = (
-  process.env.NKIRI_API_URL || "http://pat.hidencloud.com:24622"
-).replace(/\/$/, "");
+const DEFAULT_API = "https://movienetapi.hidenplay.net";
+
+function normalizeApiBase(raw: string): string {
+  let u = (raw || DEFAULT_API).trim().replace(/\/$/, "");
+  if (u.startsWith("http://")) {
+    u = "https://" + u.slice("http://".length);
+  }
+  u = u
+    .replace(/https?:\/\/pat\.hidencloud\.com:?\d*/gi, DEFAULT_API)
+    .replace(/https?:\/\/[^/]*hidencloud\.com:?\d*/gi, DEFAULT_API);
+  return u.replace(/\/$/, "") || DEFAULT_API;
+}
+
+const NKIRI_API = normalizeApiBase(
+  process.env.NKIRI_API_URL ||
+    process.env.SCRAPER_API_URL ||
+    DEFAULT_API
+);
 
 type FetchRes = { ok: boolean; status: number; json: () => Promise<any> };
 
@@ -21,9 +36,9 @@ export function registerNkiri(app: any): void {
     try {
       let url: string;
       if (tmdb) {
-        // Prefer TMDB-id route on VPS if available
         url = `${NKIRI_API}/movie/${encodeURIComponent(tmdb)}`;
-        const secret = process.env.NKIRI_API_SECRET || process.env.STREAM_API_SECRET || "";
+        const secret =
+          process.env.NKIRI_API_SECRET || process.env.STREAM_API_SECRET || "";
         if (secret) url += `?secret=${encodeURIComponent(secret)}`;
       } else {
         url = `${NKIRI_API}/api/download?q=${encodeURIComponent(q)}`;
@@ -35,7 +50,6 @@ export function registerNkiri(app: any): void {
 
       const data = await r.json().catch(() => ({}));
 
-      // Normalize both VPS shapes
       if (data?.download) {
         res.json({
           success: true,
@@ -57,12 +71,12 @@ export function registerNkiri(app: any): void {
 
       res.status(502).json({
         success: false,
-        error: data?.error || "No download link from Nkiri API",
+        error: data?.error || "No download link",
       });
     } catch (e: any) {
       res.status(502).json({
         success: false,
-        error: e?.message || "Nkiri API unreachable",
+        error: e?.message || "Unavailable",
       });
     }
   });
