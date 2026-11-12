@@ -127,7 +127,7 @@ export function WatchPage() {
             ? media?.download
             : undefined) ||
           (typeof media?.download === "string" &&
-          /\.mp4(\?|$)/i.test(media.download)
+          /\.(mp4|mkv|webm)(\?|$)/i.test(media.download)
             ? media.download
             : undefined);
 
@@ -144,10 +144,12 @@ export function WatchPage() {
           return;
         }
 
-        const isMp4 = /\.mp4(\?|$)/i.test(streamUrl);
+        // ── FIX: Accept .mkv and .webm as direct video files ──
+        const isDirectVideo = /\.(mp4|mkv|webm)(\?|$)/i.test(streamUrl);
         let playUrl = streamUrl;
 
-        if (!isMp4) {
+        // Only proxy if it's NOT a direct video file (i.e., it's an HLS .m3u8)
+        if (!isDirectVideo) {
           const playRes = await fetch(
             `/api/play-hls?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}`
           );
@@ -186,7 +188,8 @@ export function WatchPage() {
           sources: [
             {
               src: playUrl,
-              type: isMp4 ? "video/mp4" : "application/x-mpegURL",
+              // If it's .mkv or .mp4, treat as video/mp4. If it's HLS, treat as m3u8.
+              type: isDirectVideo ? "video/mp4" : "application/x-mpegURL",
             },
           ],
         });
