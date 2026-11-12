@@ -486,7 +486,9 @@ function formatMovieList(data: any, type: "movie" | "anime" | "series") {
 function formatMultiSearchList(data: any) {
   const items = (data.results || [])
     .filter((m: TmdbMovie) => m.media_type === "movie" || m.media_type === "tv")
-    .map((m: TmdbMovie) => formatMovie(m, type === "series" ? "series" : m.media_type === "tv" ? "anime" : "movie"));
+    .map((m: TmdbMovie) =>
+      formatMovie(m, m.media_type === "tv" ? "anime" : "movie")
+    );
   return {
     items,
     total: data.total_results || 0,
