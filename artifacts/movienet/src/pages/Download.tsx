@@ -20,7 +20,6 @@ export function DownloadPage() {
   const season = params.get("season") || "1";
   const episode = params.get("episode") || params.get("ep") || "";
 
-  // Clean "Show — S01E05" style titles for search
   const cleanTitle =
     rawTitle.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || rawTitle;
 
@@ -32,7 +31,6 @@ export function DownloadPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [finalUrl, setFinalUrl] = useState("");
   const [resolvedTitle, setResolvedTitle] = useState(cleanTitle);
-  const [mode, setMode] = useState<"direct" | "redirect" | "">("");
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -64,14 +62,12 @@ export function DownloadPage() {
       if (tmdbId) q.set("tmdb", tmdbId);
       if (year) q.set("year", year);
 
-      // Serial / anime: force episode-aware scraper path
       if (source === "anime" || type === "anime" || type === "tv") {
         q.set("source", "anime");
         if (episode) q.set("episode", episode);
         if (season) q.set("season", season);
       }
 
-      // Prefer /api/media (episode-aware). Fallback /api/nkiri for movies.
       let res = await fetch(`/api/media?${q.toString()}`);
       let data = await res.json().catch(() => ({}));
 
@@ -93,20 +89,14 @@ export function DownloadPage() {
       if (!res.ok || !data?.success || !downloadUrl) {
         setStatus("error");
         setErrorMsg(
-          data?.error ||
-            (episode
-              ? `No file for episode ${episode}. Try Watch or another episode.`
-              : "No download found. Try Watch or another title.")
+          episode
+            ? "This episode isn’t available yet. Try Watch or another episode."
+            : "Download isn’t available for this title right now."
         );
         return;
       }
 
       if (data.title) setResolvedTitle(String(data.title));
-      setMode(
-        data?.downloadInfo?.mode === "redirect" || data?.mode === "redirect"
-          ? "redirect"
-          : "direct"
-      );
       setFinalUrl(String(downloadUrl));
       setStatus("done");
 
@@ -117,9 +107,9 @@ export function DownloadPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch (e: any) {
+    } catch {
       setStatus("error");
-      setErrorMsg(e?.message || "Network error");
+      setErrorMsg("Something went wrong. Please try again.");
     }
   }
 
@@ -160,31 +150,33 @@ export function DownloadPage() {
             <div className="flex flex-col items-center gap-4">
               {status === "countdown" && (
                 <>
-                  <div className="w-20 h-20 rounded-full border-2 border-primary flex items-center justify-center text-3xl font-bold text-primary">
+                  <div className="w-20 h-20 rounded-full border-2 border-primary flex items-center justify-center text-3xl font-bold text-primary tabular-nums">
                     {seconds}
                   </div>
-                  <p className="text-white font-semibold">Starting soon</p>
+                  <p className="text-white font-semibold">Preparing download</p>
                   <p className="text-zinc-500 text-sm text-center">
-                    Preparing a direct link
-                    {episode ? ` for episode ${episode}` : ""}…
+                    Your link will be ready shortly
                   </p>
                 </>
               )}
               {status === "preparing" && (
                 <>
                   <div className="w-14 h-14 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-white font-semibold">Finding file…</p>
-                  <p className="text-zinc-500 text-sm text-center">
-                    Scraping can take 15–90s · {elapsed}s elapsed
+                  <p className="text-white font-semibold text-lg">Downloading…</p>
+                  <p className="text-zinc-500 text-sm text-center tabular-nums">
+                    {elapsed}s
                   </p>
                   <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-primary transition-all duration-1000"
                       style={{
-                        width: `${Math.min(95, 12 + elapsed * 2)}%`,
+                        width: `${Math.min(95, 10 + elapsed * 1.5)}%`,
                       }}
                     />
                   </div>
+                  <p className="text-zinc-600 text-xs text-center">
+                    Large files can take a minute or more
+                  </p>
                 </>
               )}
               {status === "done" && (
@@ -193,11 +185,6 @@ export function DownloadPage() {
                     <CheckCircle2 className="w-10 h-10 text-primary" />
                   </div>
                   <p className="text-white font-semibold text-lg">Ready</p>
-                  {mode === "redirect" && (
-                    <p className="text-zinc-500 text-xs text-center">
-                      Opens host page (Cloudflare / redirect)
-                    </p>
-                  )}
                   {finalUrl && (
                     <a
                       href={finalUrl}
