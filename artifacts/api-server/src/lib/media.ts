@@ -54,12 +54,22 @@ export function registerMedia(app: any): void {
     try {
       let url: string;
       if (tmdb && source !== "sports") {
-        const path =
-          source === "anime" || req.query?.season
-            ? `/tv/${encodeURIComponent(tmdb)}/${encodeURIComponent(String(req.query.season || 1))}/${encodeURIComponent(String(episode || 1))}`
-            : `/movie/${encodeURIComponent(tmdb)}`;
-        url = `${SCRAPER}${path}`;
-        if (SECRET) url += `?secret=${encodeURIComponent(SECRET)}`;
+        const isTv =
+          source === "anime" ||
+          source === "series" ||
+          source === "tv" ||
+          !!req.query?.season;
+        if (isTv) {
+          const path = `/tv/${encodeURIComponent(tmdb)}/${encodeURIComponent(String(req.query.season || 1))}/${encodeURIComponent(String(episode || 1))}`;
+          const qs = new URLSearchParams();
+          if (SECRET) qs.set("secret", SECRET);
+          // Tell VPS which cluster: anime vs series (western/K-drama)
+          qs.set("source", source === "anime" ? "anime" : "series");
+          url = `${SCRAPER}${path}?${qs.toString()}`;
+        } else {
+          url = `${SCRAPER}/movie/${encodeURIComponent(tmdb)}`;
+          if (SECRET) url += `?secret=${encodeURIComponent(SECRET)}`;
+        }
       } else {
         const params = new URLSearchParams();
         params.set("q", q);
