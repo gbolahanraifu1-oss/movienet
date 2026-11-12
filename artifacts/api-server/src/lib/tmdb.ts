@@ -376,7 +376,7 @@ export async function getSeriesList(params: {
           ["en", "es", "fr", "de", "pt", "it"].includes(String((r as any).original_language || ""))
         );
       }
-      return formatMovieList({ ...data, results }, "anime"); // reuse card type "anime" path for /title/anime/:id
+      return formatMovieList({ ...data, results }, "series"); // /title/series/:id — not anime cluster
     }
 
     const sortMap: Record<string, string> = {
@@ -474,7 +474,7 @@ function getGenreIdByName(name: string): number | undefined {
   return entry ? Number(entry[0]) : undefined;
 }
 
-function formatMovieList(data: any, type: "movie" | "anime") {
+function formatMovieList(data: any, type: "movie" | "anime" | "series") {
   return {
     items: (data.results || []).map((m: TmdbMovie) => formatMovie(m, type)),
     total: data.total_results || 0,
@@ -486,7 +486,7 @@ function formatMovieList(data: any, type: "movie" | "anime") {
 function formatMultiSearchList(data: any) {
   const items = (data.results || [])
     .filter((m: TmdbMovie) => m.media_type === "movie" || m.media_type === "tv")
-    .map((m: TmdbMovie) => formatMovie(m, m.media_type === "tv" ? "anime" : "movie"));
+    .map((m: TmdbMovie) => formatMovie(m, type === "series" ? "series" : m.media_type === "tv" ? "anime" : "movie"));
   return {
     items,
     total: data.total_results || 0,
@@ -495,7 +495,7 @@ function formatMultiSearchList(data: any) {
   };
 }
 
-function formatMovie(m: TmdbMovie, type: "movie" | "anime") {
+function formatMovie(m: TmdbMovie, type: "movie" | "anime" | "series") {
   const releaseDate = m.release_date || m.first_air_date || null;
   const isReleased = releaseDate ? new Date(releaseDate) <= new Date() : true;
   const imdbId =
@@ -519,16 +519,17 @@ function formatMovie(m: TmdbMovie, type: "movie" | "anime") {
   };
 }
 
-function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
+function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime" | "series") {
   const releaseDate = m.release_date || m.first_air_date || null;
   const isReleased = releaseDate ? new Date(releaseDate) <= new Date() : true;
   const genres = (m.genres || []).map((g) => g.name);
   const episodeRuntime = m.episode_run_time?.[0] ?? null;
-  const runtime = type === "anime" ? (episodeRuntime ?? m.runtime ?? null) : (m.runtime || null);
+  const isTvShow = type === "anime" || type === "series";
+  const runtime = isTvShow ? (episodeRuntime ?? m.runtime ?? null) : (m.runtime || null);
 
   // Season list for series/anime (skip season 0 specials when possible)
   const seasons =
-    type === "anime" && Array.isArray(m.seasons)
+    isTvShow && Array.isArray(m.seasons)
       ? m.seasons
           .filter((s) => s.season_number > 0 && (s.episode_count ?? 0) > 0)
           .map((s) => ({
@@ -572,14 +573,14 @@ function formatMovieDetail(m: TmdbMovie, type: "movie" | "anime") {
     similar: [...(m.similar?.results || []), ...(m.recommendations?.results || [])]
       .slice(0, 12)
       .map((s) => formatMovie(s, type)),
-    // Movies: quality packs. Anime series: empty — UI uses seasons/episodes instead.
+    // Movies: quality packs. TV/anime: empty — UI uses seasons/episodes instead.
     downloadLinks: (
       type === "movie" && isReleased
         ? generateDownloadLinks(m.title || m.name || "", "movie")
         : []
     ) as DownloadLink[],
-    numberOfSeasons: type === "anime" ? (m.number_of_seasons ?? seasons.length ?? null) : null,
-    numberOfEpisodes: type === "anime" ? (m.number_of_episodes ?? null) : null,
+    numberOfSeasons: isTvShow ? (m.number_of_seasons ?? seasons.length ?? null) : null,
+    numberOfEpisodes: isTvShow ? (m.number_of_episodes ?? null) : null,
     seasons,
   };
 }
