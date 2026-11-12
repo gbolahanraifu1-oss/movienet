@@ -33,6 +33,24 @@ const EMBED_SOURCES: EmbedSource[] = [
   },
 ];
 
+/** HTTPS scraper — never http:// (mixed content) */
+const VPS_HTTPS = (
+  import.meta.env.VITE_SCRAPER_API_URL ||
+  import.meta.env.VITE_NKIRI_API_URL ||
+  "https://movienetapi.hidenplay.net"
+)
+  .replace(/\/$/, "")
+  .replace(/^http:\/\//i, "https://");
+
+/**
+ * Stream secret for VPS /stream.
+ * Prefer VITE_STREAM_API_SECRET in Vercel (public to client — required for direct HLS).
+ */
+const VPS_SECRET =
+  import.meta.env.VITE_STREAM_API_SECRET ||
+  import.meta.env.VITE_SCRAPER_API_SECRET ||
+  "";
+
 function loadVideoJs(): Promise<any> {
   if ((window as any).videojs) return Promise.resolve((window as any).videojs);
   return new Promise((resolve, reject) => {
@@ -46,6 +64,26 @@ function loadVideoJs(): Promise<any> {
     script.onerror = () => reject(new Error("Player failed to load"));
     document.body.appendChild(script);
   });
+}
+
+function isDirectFile(url: string): boolean {
+  return /\.(mp4|webm|mkv|mov)(\?|$)/i.test(url);
+}
+
+/** Build playable URL: direct file OR VPS HTTPS HLS (no Vercel proxy). */
+function buildPlayUrl(
+  streamUrl: string,
+  referer: string
+): { playUrl: string; type: string } {
+  if (isDirectFile(streamUrl)) {
+    return { playUrl: streamUrl, type: "video/mp4" };
+  }
+  // HLS / live — hit VPS HTTPS /stream directly (bypasses Vercel 10s limit)
+  const playUrl =
+    `${VPS_HTTPS}/stream?url=${encodeURIComponent(streamUrl)}` +
+    (VPS_SECRET ? `&secret=${encodeURIComponent(VPS_SECRET)}` : "") +
+    `&referer=${encodeURIComponent(referer || "https://megaplay.buzz/")}`;
+  return { playUrl, type: "application/x-mpegURL" };
 }
 
 export function WatchPage() {
@@ -91,8 +129,8 @@ export function WatchPage() {
   useEffect(() => {
     if (mode !== "player" || !playerLoading) return;
     setElapsed(0);
-    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
   }, [mode, playerLoading, title, episode]);
 
   useEffect(() => {
@@ -117,6 +155,7 @@ export function WatchPage() {
         }
         if (id && !isSports) q.set("tmdb", id);
 
+        // Metadata only (short) — OK on Vercel
         const mediaRes = await fetch(`/api/media?${q.toString()}`);
         const media = await mediaRes.json().catch(() => ({}));
         if (destroyed) return;
@@ -127,12 +166,16 @@ export function WatchPage() {
             ? media?.download
             : undefined) ||
           (typeof media?.download === "string" &&
-          /\.(mp4|mkv|webm)(\?|$)/i.test(media.download)
+          isDirectFile(media.download)
+            ? media.download
+            : undefined) ||
+          (typeof media?.download === "string" && media.download.startsWith("http")
             ? media.download
             : undefined);
 
         const referer: string =
-          media?.stream?.referer || "https://megaplay.buzz/";
+          media?.stream?.referer ||
+          (isSports ? "https://iptv-org.github.io/" : "https://megaplay.buzz/");
 
         if (!streamUrl) {
           setPlayerError(
@@ -144,28 +187,8 @@ export function WatchPage() {
           return;
         }
 
-        // ── FIX: Accept .mkv and .webm as direct video files ──
-        const isDirectVideo = /\.(mp4|mkv|webm)(\?|$)/i.test(streamUrl);
-        let playUrl = streamUrl;
-
-        // Only proxy if it's NOT a direct video file (i.e., it's an HLS .m3u8)
-        if (!isDirectVideo) {
-          const playRes = await fetch(
-            `/api/play-hls?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}`
-          );
-          const play = await playRes.json().catch(() => ({}));
-          if (destroyed) return;
-          if (!play?.playUrl) {
-            setPlayerError(
-              isSports
-                ? "This channel is unavailable right now. Try another."
-                : "Stream unavailable. Try another server below."
-            );
-            setPlayerLoading(false);
-            return;
-          }
-          playUrl = play.playUrl;
-        }
+        // Direct VPS HTTPS for HLS — no /api/stream-proxy (no Vercel timeout)
+        const { playUrl, type: mime } = buildPlayUrl(streamUrl, referer);
 
         const videojs = await loadVideoJs();
         if (destroyed || !videoRef.current) return;
@@ -185,13 +208,14 @@ export function WatchPage() {
           preload: "auto",
           fluid: true,
           liveui: isSports,
-          sources: [
-            {
-              src: playUrl,
-              // If it's .mkv or .mp4, treat as video/mp4. If it's HLS, treat as m3u8.
-              type: isDirectVideo ? "video/mp4" : "application/x-mpegURL",
+          html5: {
+            vhs: {
+              overrideNative: true,
             },
-          ],
+            nativeAudioTracks: false,
+            nativeVideoTracks: false,
+          },
+          sources: [{ src: playUrl, type: mime }],
         });
         playerRef.current = player;
         player.on("error", () => {
