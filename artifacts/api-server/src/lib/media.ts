@@ -1,14 +1,30 @@
 /**
- * Proxy to VPS scraper API (movies, anime, sports) + HLS play URL builder.
- * Env:
- *   SCRAPER_API_URL=http://pat.hidencloud.com:24622
- *   SCRAPER_API_SECRET=...
+ * Proxy to scraper API (movies, anime, sports) + HLS play URL builder.
+ * Env (preferred):
+ *   NKIRI_API_URL=https://movienetapi.hidenplay.net
+ *   SCRAPER_API_URL=https://movienetapi.hidenplay.net  (alias)
+ *   SCRAPER_API_SECRET / NKIRI_API_SECRET / STREAM_API_SECRET
  */
-const SCRAPER = (
+const DEFAULT_API = "https://movienetapi.hidenplay.net";
+
+function normalizeApiBase(raw: string): string {
+  let u = (raw || DEFAULT_API).trim().replace(/\/$/, "");
+  // Never serve mixed content: upgrade old plain-http VPS hosts
+  if (u.startsWith("http://")) {
+    u = "https://" + u.slice("http://".length);
+  }
+  // Map legacy host → new HTTPS API
+  u = u
+    .replace(/https?:\/\/pat\.hidencloud\.com:?\d*/gi, DEFAULT_API)
+    .replace(/https?:\/\/[^/]*hidencloud\.com:?\d*/gi, DEFAULT_API);
+  return u.replace(/\/$/, "") || DEFAULT_API;
+}
+
+const SCRAPER = normalizeApiBase(
   process.env.SCRAPER_API_URL ||
-  process.env.NKIRI_API_URL ||
-  "http://pat.hidencloud.com:24622"
-).replace(/\/$/, "");
+    process.env.NKIRI_API_URL ||
+    DEFAULT_API
+);
 
 const SECRET =
   process.env.SCRAPER_API_SECRET ||
@@ -23,7 +39,6 @@ type FetchRes = {
 };
 
 export function registerMedia(app: any): void {
-  /** Resolve sources from VPS scraper */
   app.get("/api/media", async (req: any, res: any): Promise<void> => {
     const q = String(req.query?.q || "").trim();
     const source = String(req.query?.source || "").trim().toLowerCase() || null;
@@ -60,7 +75,7 @@ export function registerMedia(app: any): void {
       if (!r.ok && !data?.success) {
         res.status(r.status || 502).json({
           success: false,
-          error: data?.error || "Scraper failed",
+          error: data?.error || "Unavailable",
         });
         return;
       }
@@ -79,18 +94,19 @@ export function registerMedia(app: any): void {
     } catch (e: any) {
       res.status(502).json({
         success: false,
-        error: e?.message || "Scraper unreachable",
+        error: e?.message || "Unavailable",
       });
     }
   });
 
   /**
-   * Build a browser-safe HLS URL (secret stays on server).
-   * Client plays this URL in Video.js.
+   * Build browser-safe HLS URL (HTTPS only). Secret stays server-side.
    */
   app.get("/api/play-hls", (req: any, res: any): void => {
     const raw = String(req.query?.url || "").trim();
-    const referer = String(req.query?.referer || "https://megaplay.buzz/").trim();
+    const referer = String(
+      req.query?.referer || "https://megaplay.buzz/"
+    ).trim();
     if (!raw || !/^https?:\/\//i.test(raw)) {
       res.status(400).json({ success: false, error: "Missing or invalid url" });
       return;
@@ -102,7 +118,6 @@ export function registerMedia(app: any): void {
     res.json({ success: true, playUrl, referer });
   });
 
-  // Keep old /api/nkiri for download page compatibility
   app.get("/api/nkiri", async (req: any, res: any): Promise<void> => {
     const q = String(req.query?.q || "").trim();
     const tmdb = String(req.query?.tmdb || "").trim();
@@ -113,10 +128,7 @@ export function registerMedia(app: any): void {
     try {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
-      if (tmdb) {
-        // prefer title search for nkiri download
-        params.set("q", q || tmdb);
-      }
+      if (tmdb && !q) params.set("q", tmdb);
       const year = String(req.query?.year || "").trim();
       if (year) params.set("year", year);
 
@@ -147,7 +159,10 @@ export function registerMedia(app: any): void {
         error: data?.error || "No download link",
       });
     } catch (e: any) {
-      res.status(502).json({ success: false, error: e?.message || "Unreachable" });
+      res.status(502).json({
+        success: false,
+        error: e?.message || "Unavailable",
+      });
     }
   });
 }
