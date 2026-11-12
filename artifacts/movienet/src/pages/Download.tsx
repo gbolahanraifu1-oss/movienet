@@ -21,7 +21,14 @@ export function DownloadPage() {
   const tmdbId = params.get("id") ?? "";
   const year = params.get("year") ?? "";
   const type = (params.get("type") || "movie").toLowerCase();
-  const source = (params.get("source") || (type === "anime" ? "anime" : "")).toLowerCase();
+  const source = (params.get("source") || type || "movie").toLowerCase();
+  // Clusters: anime | series | movie (never force anime for series)
+  const scraperSource =
+    source === "anime" || type === "anime"
+      ? "anime"
+      : source === "series" || source === "tv" || type === "series" || type === "tv"
+        ? "series"
+        : "movie";
   const season = params.get("season") || "1";
   const episode = params.get("episode") || params.get("ep") || "";
 
