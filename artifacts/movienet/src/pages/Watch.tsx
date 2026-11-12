@@ -33,6 +33,9 @@ const EMBED_SOURCES: EmbedSource[] = [
   },
 ];
 
+/** Seconds to wait for scraper HLS before auto-switching to embeds */
+const PLAYER_TIMEOUT_SEC = 25;
+
 function loadVideoJs(): Promise<any> {
   if ((window as any).videojs) return Promise.resolve((window as any).videojs);
   return new Promise((resolve, reject) => {
@@ -54,12 +57,16 @@ export function WatchPage() {
     []
   );
 
-  const rawType = params.get("type") || "movie";
+  const rawType = (params.get("type") || "movie").toLowerCase();
   const type = (
     rawType === "tv" || rawType === "anime" ? "tv" : "movie"
   ) as "movie" | "tv";
-  const isAnime = rawType === "anime" || params.get("source") === "anime";
+  const isAnime =
+    rawType === "anime" ||
+    params.get("source") === "anime" ||
+    (rawType === "tv" && params.get("source") === "anime");
   const isSports = rawType === "sports" || params.get("source") === "sports";
+  const isSerial = isAnime || rawType === "tv";
   const id = params.get("id") || "";
   const title = params.get("title") || "Now Playing";
   const season = Math.max(1, Number(params.get("season") || 1));
@@ -72,20 +79,52 @@ export function WatchPage() {
         ? "/sports"
         : "/");
 
-  const [mode, setMode] = useState<"player" | "embed">(
-    isSports || isAnime ? "player" : "embed"
-  );
+  // MovieNet player is always the default
+  const [mode, setMode] = useState<"player" | "embed">("player");
   const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
   const [playerError, setPlayerError] = useState("");
   const [playerLoading, setPlayerLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
+  const [countdown, setCountdown] = useState(PLAYER_TIMEOUT_SEC);
+  const [autoSwitchNote, setAutoSwitchNote] = useState("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<any>(null);
+  const switchedRef = useRef(false);
+  const userPickedEmbedRef = useRef(false);
 
   const embed = EMBED_SOURCES.find((s) => s.id === sourceId) || EMBED_SOURCES[0];
   const embedUrl =
     id && !isSports ? embed.build({ type, id, season, episode }) : "";
 
+  function goEmbed(reason: string) {
+    if (isSports || !embedUrl || userPickedEmbedRef.current) return;
+    if (switchedRef.current) return;
+    switchedRef.current = true;
+    setAutoSwitchNote(reason);
+    setMode("embed");
+    setPlayerLoading(false);
+  }
+
+  // Countdown while on player mode — auto-switch to embed when it hits 0
+  useEffect(() => {
+    if (mode !== "player" || isSports) return;
+    if (!embedUrl) return;
+    setCountdown(PLAYER_TIMEOUT_SEC);
+    switchedRef.current = false;
+    const tick = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(tick);
+          goEmbed("Stream took too long — switched to embed server.");
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [mode, id, title, episode, season, isSports, embedUrl]);
+
+  // Resolve + start MovieNet HLS player
   useEffect(() => {
     if (mode !== "player") return;
     let destroyed = false;
@@ -94,17 +133,20 @@ export function WatchPage() {
       setPlayerLoading(true);
       setPlayerError("");
       setStatusText("Resolving stream…");
+      setAutoSwitchNote("");
 
       try {
         const q = new URLSearchParams();
-        q.set("q", title);
+        const searchTitle =
+          title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
+        q.set("q", searchTitle);
         if (isSports) q.set("source", "sports");
-        else if (isAnime) {
+        else if (isAnime || isSerial) {
           q.set("source", "anime");
           q.set("episode", String(episode));
+          q.set("season", String(season));
         }
         if (id && !isSports) q.set("tmdb", id);
-        if (isAnime && season) q.set("season", String(season));
 
         const mediaRes = await fetch(`/api/media?${q.toString()}`);
         const media = await mediaRes.json().catch(() => ({}));
@@ -120,11 +162,12 @@ export function WatchPage() {
 
         if (!streamUrl) {
           setPlayerError(
-            media?.error ||
-              "No HLS stream from scraper. Try an embed server."
+            media?.error || "No HLS stream from scraper."
           );
-          if (!isSports) setMode("embed");
           setPlayerLoading(false);
+          if (!isSports && embedUrl) {
+            goEmbed("No stream found — switched to embed server.");
+          }
           return;
         }
 
@@ -136,8 +179,10 @@ export function WatchPage() {
         if (destroyed) return;
         if (!play?.playUrl) {
           setPlayerError("Could not build HLS proxy URL");
-          if (!isSports) setMode("embed");
           setPlayerLoading(false);
+          if (!isSports && embedUrl) {
+            goEmbed("Proxy failed — switched to embed server.");
+          }
           return;
         }
 
@@ -169,16 +214,23 @@ export function WatchPage() {
         });
         playerRef.current = player;
         player.on("error", () => {
-          setPlayerError(
-            "Playback failed (CDN or network). Try embeds or another source."
-          );
-          if (!isSports) setMode("embed");
+          setPlayerError("Playback failed (CDN or network).");
+          if (!isSports && embedUrl) {
+            goEmbed("Player error — switched to embed server.");
+          }
+        });
+        player.on("playing", () => {
+          // Stream works — stop auto-switch pressure by freezing countdown high
+          setCountdown((c) => (c > 0 ? c + 999 : c));
+          setStatusText("");
         });
         setStatusText("");
       } catch (e: any) {
         if (!destroyed) {
           setPlayerError(e?.message || "Player failed");
-          if (!isSports) setMode("embed");
+          if (!isSports && embedUrl) {
+            goEmbed("Error — switched to embed server.");
+          }
         }
       } finally {
         if (!destroyed) setPlayerLoading(false);
@@ -197,7 +249,7 @@ export function WatchPage() {
         playerRef.current = null;
       }
     };
-  }, [mode, id, title, episode, season, isAnime, isSports]);
+  }, [mode, id, title, episode, season, isAnime, isSports, isSerial]);
 
   if (!id && !isSports) {
     return (
@@ -247,10 +299,29 @@ export function WatchPage() {
       <div className="relative w-full bg-black aspect-video max-h-[70vh] md:max-h-[80vh]">
         {mode === "player" && (
           <div data-vjs-player className="absolute inset-0">
-            {playerLoading && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-zinc-300 text-sm bg-black/70">
+            {(playerLoading || countdown > 0) && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-zinc-300 text-sm bg-black/75 px-4">
                 <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span>{statusText || "Loading…"}</span>
+                <span>{statusText || "Loading MovieNet player…"}</span>
+                {!isSports && embedUrl && countdown <= PLAYER_TIMEOUT_SEC && (
+                  <p className="text-zinc-500 text-xs text-center max-w-xs">
+                    Auto-switch to embed in{" "}
+                    <span className="text-primary font-bold tabular-nums">
+                      {Math.min(countdown, PLAYER_TIMEOUT_SEC)}s
+                    </span>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="text-primary underline underline-offset-2"
+                      onClick={() => {
+                        userPickedEmbedRef.current = true;
+                        setMode("embed");
+                      }}
+                    >
+                      Use embed now
+                    </button>
+                  </p>
+                )}
               </div>
             )}
             <video
@@ -271,20 +342,31 @@ export function WatchPage() {
             referrerPolicy="origin"
           />
         )}
+        {mode === "embed" && isSports && (
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-400 text-sm">
+            Sports uses MovieNet player only
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-4 space-y-4 bg-zinc-950 border-t border-white/10">
-        {playerError && (
+        {(playerError || autoSwitchNote) && (
           <div className="flex items-start gap-2 text-amber-200/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{playerError}</span>
+            <span>{autoSwitchNote || playerError}</span>
           </div>
         )}
 
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setMode("player")}
+            onClick={() => {
+              userPickedEmbedRef.current = false;
+              switchedRef.current = false;
+              setMode("player");
+              setAutoSwitchNote("");
+              setPlayerError("");
+            }}
             className={
               "px-3 py-1.5 rounded-full text-xs font-bold border " +
               (mode === "player"
@@ -294,10 +376,13 @@ export function WatchPage() {
           >
             MovieNet player
           </button>
-          {!isSports && (
+          {!isSports && embedUrl && (
             <button
               type="button"
-              onClick={() => setMode("embed")}
+              onClick={() => {
+                userPickedEmbedRef.current = true;
+                setMode("embed");
+              }}
               className={
                 "px-3 py-1.5 rounded-full text-xs font-bold border " +
                 (mode === "embed"
@@ -337,8 +422,8 @@ export function WatchPage() {
 
         {mode === "player" && (
           <p className="text-zinc-600 text-xs">
-            Plays via your VPS HLS proxy (referer-safe). Anime/sports use scraper
-            streams; embeds remain as backup.
+            MovieNet player is default. If the stream is slow or fails, we
+            auto-switch to embeds (or pick Embed servers anytime).
           </p>
         )}
 
