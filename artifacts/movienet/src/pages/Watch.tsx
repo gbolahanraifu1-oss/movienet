@@ -33,13 +33,8 @@ const EMBED_SOURCES: EmbedSource[] = [
   },
 ];
 
-const VPS_HTTPS = (
-  import.meta.env.VITE_SCRAPER_API_URL ||
-  import.meta.env.VITE_NKIRI_API_URL ||
-  "https://movienetapi.hidenplay.net"
-)
-  .replace(/\/$/, "")
-  .replace(/^http:\/\//i, "https://");
+/** Always HTTPS — never allow http:// (mixed content block) */
+const VPS_HTTPS = "https://movienetapi.hidenplay.net";
 
 /** Required for /stream — set VITE_STREAM_API_SECRET on Vercel */
 const VPS_SECRET = String(
@@ -78,8 +73,11 @@ function buildPlayUrl(
   params.set("url", streamUrl);
   params.set("referer", referer || "https://iptv-org.github.io/");
   if (VPS_SECRET) params.set("secret", VPS_SECRET);
+  let playUrl = `${VPS_HTTPS}/stream?${params.toString()}`;
+  // Belt-and-suspenders: never emit http:// to the player
+  playUrl = playUrl.replace(/^http:\/\//i, "https://");
   return {
-    playUrl: `${VPS_HTTPS}/stream?${params.toString()}`,
+    playUrl,
     type: "application/x-mpegURL",
   };
 }
