@@ -102,9 +102,10 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
               {data.isReleased ? (
                 <Button asChild className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 text-lg shadow-lg shadow-primary/20">
                   <Link href={`/watch?${new URLSearchParams({
-                    type: type === "anime" ? "tv" : "movie",
+                    type: type === "anime" ? "anime" : "movie",
                     id: String(id),
                     title: data.title || "",
+                    ...(type === "anime" ? { season: "1", episode: "1" } : {}),
                     back: `/title/${type}/${id}`,
                   }).toString()}`}>
                     <Play className="w-5 h-5 mr-2 fill-current" /> Watch Now
@@ -272,17 +273,19 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime', id: string 
                         const ep = i + 1;
                         const epLabel = `S${String(activeSeason.seasonNumber).padStart(2, "0")}E${String(ep).padStart(2, "0")}`;
                         const watchParams = new URLSearchParams({
-                          type: "tv",
+                          type: "anime",
+                          source: "anime",
                           id: String(id),
-                          title: `${data.title} — ${epLabel}`,
+                          title: String(data.title || ""),
                           season: String(activeSeason.seasonNumber),
                           episode: String(ep),
                           back: `/title/${type}/${id}`,
                         });
                         const dlParams = new URLSearchParams({
                           type: "anime",
+                          source: "anime",
                           id: String(id),
-                          title: `${data.title} — ${epLabel}`,
+                          title: String(data.title || ""),
                           season: String(activeSeason.seasonNumber),
                           episode: String(ep),
                           poster: data.posterUrl ?? "",
