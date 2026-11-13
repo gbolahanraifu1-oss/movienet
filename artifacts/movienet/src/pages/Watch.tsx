@@ -140,12 +140,11 @@ export function WatchPage() {
         const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
         q.set("source", scraperSource);
-        if (isAnime || isSeries) {
+        if (isAnime || isSeries || isSports) {
           q.set("episode", String(episode));
           q.set("season", String(season));
         }
-        if (id && !isSports) q.set("tmdb", id);
-        if (VPS_SECRET) q.set("secret", VPS_SECRET);
+        // Title is enough for VPS /api/download (matches cache). tmdb optional.
 
         // BYPASS VERCEL: Hit VPS directly
         const vpsUrl = `${VPS_HTTPS}/api/download?${q.toString()}`;
