@@ -204,3 +204,4 @@ export function registerMedia(app: any): void {
     }
   });
 }
+
