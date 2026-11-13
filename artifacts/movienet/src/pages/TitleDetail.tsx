@@ -35,6 +35,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
     episodeCount: number;
     airDate?: string | null;
     posterUrl?: string | null;
+    episodes?: Array<{ episodeNumber: number; airDate?: string | null; name?: string }>;
   }> = (data as any)?.seasons ?? [];
 
   const activeSeason = useMemo(() => {
@@ -273,8 +274,11 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
                       Select an episode — Watch or Download
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {Array.from({ length: activeSeason.episodeCount }, (_, i) => {
-                        const ep = i + 1;
+                      {(activeSeason.episodes?.length
+                        ? activeSeason.episodes.map((e) => e.episodeNumber)
+                        : Array.from({ length: activeSeason.episodeCount }, (_, i) => i + 1)
+                      ).map((ep) => {
+                        const i = ep - 1;
                         const epLabel = `S${String(activeSeason.seasonNumber).padStart(2, "0")}E${String(ep).padStart(2, "0")}`;
                         const watchParams = new URLSearchParams({
                           type: scraperSource,
