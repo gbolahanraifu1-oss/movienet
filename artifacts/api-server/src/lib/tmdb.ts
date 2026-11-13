@@ -241,9 +241,8 @@ export async function getAnimeList(params: {
     if (params.search) {
       const data = await tmdbFetch("/search/tv", { query: params.search, page });
       // Anime only: Animation + Japanese (not Western cartoons)
-      const jaOnly = (data.results || []).filter(
-        (r: TmdbMovie) =>
-          r.genre_ids?.includes(16) && (r as any).original_language === "ja"
+      const jaOnly = (data.results || []).filter((r: TmdbMovie) =>
+        isJapaneseAnimeResult(r)
       );
       return formatMovieList({ ...data, results: jaOnly }, "anime");
     }
@@ -317,7 +316,15 @@ export async function getAnimeDetail(id: string) {
     const data = await tmdbFetch(`/tv/${id}`, {
       append_to_response: "videos,credits,similar,recommendations,external_ids",
     });
-    const detail = formatMovieDetail(data, "anime");
+    const detailType: "anime" | "series" = isJapaneseAnimeResult({
+      ...data,
+      genre_ids: (data.genres || []).map((g: any) => g.id),
+      original_language: data.original_language,
+      origin_country: data.origin_country,
+    } as TmdbMovie)
+      ? "anime"
+      : "series";
+    const detail = formatMovieDetail(data, detailType);
     // Series use seasons/episodes UI — skip movie packs for anime.
     detail.downloadLinks = [];
     return detail;
@@ -386,10 +393,13 @@ export async function getSeriesList(params: {
       title: "original_name.asc",
     };
     const sortBy = sortMap[params.sort || "popular"] || "popularity.desc";
+    // Live-action TV only (K/C/J-drama, Western shows).
+    // Western cartoon *movies* stay under Movies. Japanese Animation stays under Anime.
+    // Do not dump Animation genre into Series.
     const fetchParams: Record<string, string | number> = {
       page,
       sort_by: sortBy,
-      without_genres: 16, // exclude Animation → no anime/cartoons
+      without_genres: 16,
     };
     if (params.sort === "rating") fetchParams["vote_count.gte"] = 50;
 
@@ -399,14 +409,10 @@ export async function getSeriesList(params: {
     else if (region === "western") fetchParams.with_original_language = "en";
 
     const data = await tmdbFetch("/discover/tv", fetchParams);
-    // jdrama: double-check no animation slipped in
-    if (region === "jdrama" || region === "all") {
-      const results = (data.results || []).filter(
-        (r: TmdbMovie) => !r.genre_ids?.includes(16)
-      );
-      return formatMovieList({ ...data, results }, "anime");
-    }
-    return formatMovieList(data, "anime");
+    const results = (data.results || []).filter(
+      (r: TmdbMovie) => !r.genre_ids?.includes(16) && !isJapaneseAnimeResult(r)
+    );
+    return formatMovieList({ ...data, results }, "series");
   } catch {
     return { items: [], total: 0, page, totalPages: 1 };
   }
@@ -469,6 +475,19 @@ export async function getGenreList() {
   }
 }
 
+
+/** Japanese Animation only (not Western cartoons / live-action). */
+function isJapaneseAnimeResult(m: TmdbMovie): boolean {
+  const lang = (m as any).original_language;
+  const countries: string[] = (m as any).origin_country || [];
+  const isJa = lang === "ja" || countries.includes("JP");
+  const isAnim = Array.isArray(m.genre_ids)
+    ? m.genre_ids.includes(16)
+    : Array.isArray((m as any).genres) &&
+      (m as any).genres.some((g: any) => g.id === 16 || g.name === "Animation");
+  return isJa && isAnim;
+}
+
 function getGenreIdByName(name: string): number | undefined {
   const entry = Object.entries(GENRE_MAP).find(([, v]) => v.toLowerCase() === name.toLowerCase());
   return entry ? Number(entry[0]) : undefined;
@@ -486,9 +505,13 @@ function formatMovieList(data: any, type: "movie" | "anime" | "series") {
 function formatMultiSearchList(data: any) {
   const items = (data.results || [])
     .filter((m: TmdbMovie) => m.media_type === "movie" || m.media_type === "tv")
-    .map((m: TmdbMovie) =>
-      formatMovie(m, m.media_type === "tv" ? "anime" : "movie")
-    );
+    .map((m: TmdbMovie) => {
+      // Theatrical / feature films (incl. Western cartoons like Pixar) → movie
+      if (m.media_type === "movie") return formatMovie(m, "movie");
+      // TV: Japanese Animation only → anime; other TV (live-action + Western cartoon series) → series
+      if (isJapaneseAnimeResult(m)) return formatMovie(m, "anime");
+      return formatMovie(m, "series");
+    });
   return {
     items,
     total: data.total_results || 0,
