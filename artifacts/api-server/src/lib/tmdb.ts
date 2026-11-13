@@ -290,6 +290,37 @@ export async function getTrendingAnimeList(limit = 20) {
   }
 }
 
+
+/** Episodes that have already aired (TMDB air_date <= today). */
+async function getAiredEpisodesForSeason(
+  tvId: string | number,
+  seasonNumber: number
+): Promise<{ episodeNumber: number; airDate: string | null; name: string }[]> {
+  try {
+    const data = await tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    const eps = (data.episodes || []) as Array<{
+      episode_number: number;
+      air_date?: string | null;
+      name?: string;
+    }>;
+    return eps
+      .filter((ep) => {
+        if (!ep.air_date) return false; // no date = treat as unreleased
+        const air = new Date(ep.air_date + "T23:59:59");
+        return air.getTime() <= endOfToday.getTime();
+      })
+      .map((ep) => ({
+        episodeNumber: ep.episode_number,
+        airDate: ep.air_date || null,
+        name: ep.name || `Episode ${ep.episode_number}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getAnimeDetail(id: string) {
   const normalizedId = decodeURIComponent(String(id)).trim();
   const localAnime = getMockAnime().find((anime) => anime.id === normalizedId);
@@ -327,6 +358,27 @@ export async function getAnimeDetail(id: string) {
     const detail = formatMovieDetail(data, detailType);
     // Series use seasons/episodes UI — skip movie packs for anime.
     detail.downloadLinks = [];
+
+    // Only list episodes that have already aired (TMDB updates as they air)
+    if (Array.isArray(detail.seasons) && detail.seasons.length > 0) {
+      const enriched = await Promise.all(
+        detail.seasons.map(async (s: any) => {
+          const aired = await getAiredEpisodesForSeason(id, s.seasonNumber);
+          return {
+            ...s,
+            episodeCount: aired.length,
+            episodes: aired,
+            // Keep season only if at least one episode has aired
+          };
+        })
+      );
+      detail.seasons = enriched.filter((s: any) => s.episodeCount > 0);
+      detail.numberOfSeasons = detail.seasons.length;
+      detail.numberOfEpisodes = detail.seasons.reduce(
+        (n: number, s: any) => n + (s.episodeCount || 0),
+        0
+      );
+    }
     return detail;
   } catch {
     const mock = getMockAnime().find(a => a.id === id) || getMockAnime()[0];
