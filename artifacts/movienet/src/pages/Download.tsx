@@ -68,27 +68,20 @@ export function DownloadPage() {
     try {
       const q = new URLSearchParams();
       q.set("q", cleanTitle);
-      if (tmdbId) q.set("tmdb", tmdbId);
-      if (year) q.set("year", year);
-
-      if (source === "anime" || type === "anime" || type === "tv") {
-        q.set("source", "anime");
-        if (episode) q.set("episode", episode);
-        if (season) q.set("season", season);
+      q.set("source", scraperSource);
+      if (scraperSource === "anime" || scraperSource === "series") {
+        q.set("episode", episode || "1");
+        q.set("season", season || "1");
       }
-      if (VPS_SECRET) q.set("secret", VPS_SECRET);
-
-      // BYPASS VERCEL: Hit VPS directly
-      let res = await fetch(`${VPS_HTTPS}/api/download?${q.toString()}`);
+      // Prefer same-origin proxy (secret stays server-side); falls back handled by /api/media
+      let res = await fetch(`/api/media?${q.toString()}`);
       let data = await res.json().catch(() => ({}));
 
-      // Fallback for Nkiri if AnimePahe fails and it's not anime
-      if ((!res.ok || !data?.success) && source !== "anime" && type !== "anime") {
+      if ((!res.ok || !data?.success) && scraperSource === "movie") {
         const q2 = new URLSearchParams();
         q2.set("q", cleanTitle);
-        q2.set("source", "nkiri");
-        if (VPS_SECRET) q2.set("secret", VPS_SECRET);
-        res = await fetch(`${VPS_HTTPS}/api/download?${q2.toString()}`);
+        q2.set("source", "movie");
+        res = await fetch(`/api/media?${q2.toString()}`);
         data = await res.json().catch(() => ({}));
       }
 
