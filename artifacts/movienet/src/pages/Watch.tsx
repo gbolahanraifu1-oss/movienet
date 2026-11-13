@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, ExternalLink, AlertCircle, Radio } from "lucide-react";
 import { AdSlot } from "../components/AdSlot";
+import { VideoPreroll } from "../components/VideoPreroll";
 
 type Ctx = { type: "movie" | "tv"; id: string; season: number; episode: number };
 type EmbedSource = { id: string; label: string; build: (ctx: Ctx) => string };
@@ -112,6 +113,7 @@ export function WatchPage() {
   const [sourceId, setSourceId] = useState(EMBED_SOURCES[0].id);
   const [playerError, setPlayerError] = useState("");
   const [playerLoading, setPlayerLoading] = useState(false);
+  const [prerollDone, setPrerollDone] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<any>(null);
@@ -127,7 +129,7 @@ export function WatchPage() {
   }, [mode, playerLoading, title, episode]);
 
   useEffect(() => {
-    if (mode !== "player") return;
+    if (mode !== "player" || !prerollDone) return;
     let destroyed = false;
 
     async function run() {
@@ -140,6 +142,7 @@ export function WatchPage() {
         const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
         q.set("source", scraperSource);
+        q.set("mode", "stream");
         if (isAnime || isSeries || isSports) {
           q.set("episode", String(episode));
           q.set("season", String(season));
@@ -194,7 +197,16 @@ export function WatchPage() {
           preload: "auto",
           fluid: true,
           liveui: isSports,
-          html5: { vhs: { overrideNative: true } },
+          html5: {
+            vhs: {
+              overrideNative: true,
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
+              limitRenditionByPlayerDimensions: false,
+            },
+            nativeAudioTracks: false,
+            nativeVideoTracks: false,
+          },
           sources: [{ src: playUrl, type: mime }],
         });
         
@@ -222,7 +234,7 @@ export function WatchPage() {
         playerRef.current = null;
       }
     };
-  }, [mode, id, title, episode, season, isAnime, isSeries, isSports, scraperSource]);
+  }, [mode, prerollDone, id, title, episode, season, isAnime, isSeries, isSports, scraperSource]);
 
   if (!id && !isSports) {
     return (
@@ -251,7 +263,10 @@ export function WatchPage() {
       </div>
 
       <div className="relative w-full bg-black aspect-video max-h-[70vh] md:max-h-[80vh]">
-        {mode === "player" && (
+        {mode === "player" && !prerollDone && (
+          <VideoPreroll onDone={() => setPrerollDone(true)} />
+        )}
+        {mode === "player" && prerollDone && (
           <div data-vjs-player className="absolute inset-0">
             {playerLoading && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-zinc-300 text-sm bg-black/80 px-4">
@@ -286,7 +301,7 @@ export function WatchPage() {
             </button>
           )}
         </div>
-        <AdSlot label="Advertisement" />
+        <AdSlot label="Advertisement" popunder={false} />
       </div>
     </div>
   );
