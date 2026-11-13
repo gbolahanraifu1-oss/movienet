@@ -115,6 +115,8 @@ export function registerMedia(app: any): void {
           params.set("episode", episode);
           params.set("season", season);
         }
+        const mode = String(req.query?.mode || "").trim();
+        if (mode) params.set("mode", mode);
         url = `${SCRAPER}/api/download?${params.toString()}`;
       } else if (tmdb && source !== "sports") {
         if (source === "anime" || source === "series") {
