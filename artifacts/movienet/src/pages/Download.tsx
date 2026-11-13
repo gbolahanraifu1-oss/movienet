@@ -69,6 +69,7 @@ export function DownloadPage() {
       const q = new URLSearchParams();
       q.set("q", cleanTitle);
       q.set("source", scraperSource);
+      q.set("mode", "download");
       if (scraperSource === "anime" || scraperSource === "series") {
         q.set("episode", episode || "1");
         q.set("season", season || "1");
