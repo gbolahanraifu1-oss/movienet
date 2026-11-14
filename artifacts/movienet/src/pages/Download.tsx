@@ -1,5 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
+import { useAuth } from "@clerk/react";
+import {
+  guestCanDownload,
+  remainingGuestDownloads,
+  recordGuestDownload,
+  GUEST_DOWNLOAD_LIMIT,
+} from "./guestLimits";
 import { AdSlot } from "../components/AdSlot";
 import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
@@ -13,6 +20,8 @@ const VPS_SECRET = String(
 ).trim();
 
 export function DownloadPage() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const [gate, setGate] = useState<"ok" | "need-auth" | "checking">("checking");
   const params = new URLSearchParams(window.location.search);
 
   const rawTitle = params.get("title") ?? "Unknown Title";
@@ -55,10 +64,21 @@ export function DownloadPage() {
   }, [status]);
 
   useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn) {
+      setGate("ok");
+      return;
+    }
+    if (!guestCanDownload()) setGate("need-auth");
+    else setGate("ok");
+  }, [isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (gate !== "ok") return;
     if (seconds > 0 || startedRef.current) return;
     startedRef.current = true;
     void startDownload();
-  }, [seconds]);
+  }, [seconds, gate]);
 
   async function startDownload() {
     setStatus("preparing");
@@ -100,6 +120,7 @@ export function DownloadPage() {
 
       if (data.title) setResolvedTitle(String(data.title));
       setFinalUrl(String(downloadUrl));
+      if (!isSignedIn) recordGuestDownload();
       setStatus("done");
 
       const a = document.createElement("a");
