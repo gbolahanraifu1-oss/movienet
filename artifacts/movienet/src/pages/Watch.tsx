@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/react";
 import { Link } from "wouter";
 import { ArrowLeft, ExternalLink, AlertCircle, Radio } from "lucide-react";
 import { AdSlot } from "../components/AdSlot";
@@ -77,6 +78,7 @@ function buildPlayUrl(streamUrl: string, referer: string): { playUrl: string; ty
 }
 
 export function WatchPage() {
+  const { isSignedIn, isLoaded } = useAuth();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   const rawType = (params.get("type") || "movie").toLowerCase();
@@ -142,6 +144,7 @@ export function WatchPage() {
         const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
         q.set("source", scraperSource);
+        if (!isSignedIn) return;
         q.set("mode", "stream");
         if (isAnime || isSeries || isSports) {
           q.set("episode", String(episode));
@@ -240,6 +243,30 @@ export function WatchPage() {
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center p-6 text-zinc-400">
         Missing title. <Link href="/" className="text-primary ml-2">Home</Link>
+      </div>
+    );
+  }
+
+  if (isLoaded && !isSignedIn) {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center px-6 text-center gap-4">
+        <h1 className="text-xl font-bold">Sign in to stream</h1>
+        <p className="text-zinc-400 text-sm max-w-sm">
+          Streaming is free with an account. Create one or sign in to watch.
+        </p>
+        <div className="flex flex-wrap gap-3 justify-center">
+          <Link href={`/sign-in?redirect_url=${next}`}>
+            <button type="button" className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold">
+              Sign in
+            </button>
+          </Link>
+          <Link href={`/sign-up?redirect_url=${next}`}>
+            <button type="button" className="rounded-xl border border-white/20 px-5 py-2.5 text-sm">
+              Sign up
+            </button>
+          </Link>
+        </div>
       </div>
     );
   }
