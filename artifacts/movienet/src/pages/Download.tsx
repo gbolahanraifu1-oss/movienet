@@ -1,38 +1,22 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@clerk/react";
+import {
+  guestCanDownload,
+  remainingGuestDownloads,
+  recordGuestDownload,
+  GUEST_DOWNLOAD_LIMIT,
+} from "./guestLimits";
 import { AdSlot } from "../components/AdSlot";
 import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 const COUNTDOWN = 5;
-const GUEST_DOWNLOAD_LIMIT = 5;
-const GUEST_DL_KEY = "movienet_guest_downloads";
-
-function getGuestDownloadCount(): number {
-  try {
-    const n = parseInt(localStorage.getItem(GUEST_DL_KEY) || "0", 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-function guestCanDownload(): boolean {
-  return getGuestDownloadCount() < GUEST_DOWNLOAD_LIMIT;
-}
-function recordGuestDownload(): void {
-  try {
-    localStorage.setItem(GUEST_DL_KEY, String(getGuestDownloadCount() + 1));
-  } catch {
-    /* ignore */
-  }
-}
-
 const VPS_HTTPS = "https://movienetapi.hidenplay.net";
 const VPS_SECRET = String(
   import.meta.env.VITE_STREAM_API_SECRET ||
     import.meta.env.VITE_SCRAPER_API_SECRET ||
-    "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm"
+    "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm" // Fallback
 ).trim();
 
 export function DownloadPage() {
@@ -47,6 +31,7 @@ export function DownloadPage() {
   const year = params.get("year") ?? "";
   const type = (params.get("type") || "movie").toLowerCase();
   const source = (params.get("source") || type || "movie").toLowerCase();
+  // Clusters: anime | series | movie (never force anime for series)
   const scraperSource =
     source === "anime" || type === "anime"
       ? "anime"
@@ -84,7 +69,8 @@ export function DownloadPage() {
       setGate("ok");
       return;
     }
-    setGate(guestCanDownload() ? "ok" : "need-auth");
+    if (!guestCanDownload()) setGate("need-auth");
+    else setGate("ok");
   }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
@@ -104,28 +90,32 @@ export function DownloadPage() {
       q.set("q", cleanTitle);
       q.set("source", scraperSource);
       q.set("mode", "download");
-      if (year) q.set("year", year);
-      if (tmdbId) q.set("id", tmdbId);
-      if (scraperSource !== "movie") {
-        q.set("season", season);
-        if (episode) q.set("episode", episode);
+      if (scraperSource === "anime" || scraperSource === "series") {
+        q.set("episode", episode || "1");
+        q.set("season", season || "1");
       }
-
+      // Prefer same-origin proxy (secret stays server-side); falls back handled by /api/media
       let res = await fetch(`/api/media?${q.toString()}`);
       let data = await res.json().catch(() => ({}));
 
-      if (!res.ok || !data?.success) {
-        const q2 = new URLSearchParams(q);
-        q2.set("source", scraperSource === "anime" ? "anime" : scraperSource);
+      if ((!res.ok || !data?.success) && scraperSource === "movie") {
+        const q2 = new URLSearchParams();
+        q2.set("q", cleanTitle);
+        q2.set("source", "movie");
         res = await fetch(`/api/media?${q2.toString()}`);
         data = await res.json().catch(() => ({}));
       }
 
-      const downloadUrl =
-        data?.downloadInfo?.url || data?.download || data?.sources?.[0]?.url || "";
+      const downloadUrl = data?.downloadInfo?.url || data?.download || data?.sources?.[0]?.url || "";
 
       if (!res.ok || !data?.success || !downloadUrl) {
-        throw new Error(data?.error || data?.message || "File not found");
+        setStatus("error");
+        setErrorMsg(
+          episode
+            ? "This episode isn’t available yet. Try Watch or another episode."
+            : "Download isn’t available for this title right now."
+        );
+        return;
       }
 
       if (data.title) setResolvedTitle(String(data.title));
@@ -137,81 +127,49 @@ export function DownloadPage() {
       a.href = String(downloadUrl);
       a.target = "_blank";
       a.rel = "noopener";
+      document.body.appendChild(a);
       a.click();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Download failed";
-      setErrorMsg(msg);
+      a.remove();
+    } catch {
       setStatus("error");
+      setErrorMsg("Something went wrong. Please try again.");
     }
   }
 
-  if (!isLoaded || gate === "checking") {
-    return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        <p className="text-zinc-400 text-sm">Checking download access…</p>
-      </div>
-    );
-  }
-
-  if (gate === "need-auth") {
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    return (
-      <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center px-6 text-center gap-4">
-        <AlertCircle className="w-10 h-10 text-amber-400" />
-        <h1 className="text-xl font-bold">Free download limit reached</h1>
-        <p className="text-zinc-400 text-sm max-w-sm">
-          Guests get {GUEST_DOWNLOAD_LIMIT} downloads. Sign in or create a free account to keep downloading.
-        </p>
-        <div className="flex flex-wrap gap-3 justify-center">
-          <Link
-            href={`/sign-in?redirect_url=${next}`}
-            className="rounded-xl bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white"
-          >
-            Sign in
+  return (
+    <div className="min-h-[100dvh] bg-background">
+      <div className="border-b border-white/5 bg-zinc-950/80">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+          <Link href={backHref} className="text-zinc-400 hover:text-white">
+            <ArrowLeft className="w-5 h-5" />
           </Link>
-          <Link
-            href={`/sign-up?redirect_url=${next}`}
-            className="rounded-xl border border-white/20 px-5 py-2.5 text-sm text-white"
-          >
-            Sign up
-          </Link>
-          <Link href={backHref} className="rounded-xl px-5 py-2.5 text-sm text-zinc-400">
-            Back
-          </Link>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm truncate">{resolvedTitle}</p>
+            <p className="text-zinc-500 text-xs">
+              Download
+              {episode ? ` · S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}` : ""}
+            </p>
+          </div>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="max-w-lg mx-auto px-4 py-8">
-        <Link href={backHref} className="text-zinc-400 hover:text-white inline-flex items-center gap-2 text-sm mb-6">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
-
+      <div className="container mx-auto px-4 py-10 max-w-lg">
         <div className="space-y-6">
-          {poster ? (
-            <img src={poster} alt="" className="w-32 mx-auto rounded-xl shadow-lg" />
-          ) : null}
-          <div className="text-center">
-            <h1 className="text-xl font-bold">{resolvedTitle}</h1>
-            {episode ? (
-              <p className="text-zinc-500 text-sm mt-1">
-                S{season}E{episode}
-              </p>
-            ) : null}
-          </div>
-
-          <AdSlot label="Advertisement" />
+          {poster && (
+            <div className="flex justify-center">
+              <img src={poster} alt="" className="w-28 rounded-xl border border-white/10 shadow-lg" />
+            </div>
+          )}
 
           <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-8">
             <div className="flex flex-col items-center gap-4">
               {status === "countdown" && (
                 <>
+                  <div className="w-20 h-20 rounded-full border-2 border-primary flex items-center justify-center text-3xl font-bold text-primary tabular-nums">
+                    {seconds}
+                  </div>
                   <p className="text-white font-semibold">Preparing download</p>
-                  <p className="text-4xl font-bold tabular-nums text-primary">{seconds}</p>
-                  <p className="text-zinc-500 text-sm">Your file will be ready shortly</p>
+                  <p className="text-zinc-500 text-sm text-center">Your link will be ready shortly</p>
                 </>
               )}
               {status === "preparing" && (
@@ -220,10 +178,7 @@ export function DownloadPage() {
                   <p className="text-white font-semibold text-lg">Downloading…</p>
                   <p className="text-zinc-500 text-sm text-center tabular-nums">{elapsed}s</p>
                   <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all duration-1000"
-                      style={{ width: `${Math.min(95, 10 + elapsed * 1.5)}%` }}
-                    />
+                    <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${Math.min(95, 10 + elapsed * 1.5)}%` }} />
                   </div>
                   <p className="text-zinc-600 text-xs text-center">Large files can take a minute or more</p>
                 </>
@@ -234,16 +189,11 @@ export function DownloadPage() {
                     <CheckCircle2 className="w-10 h-10 text-primary" />
                   </div>
                   <p className="text-white font-semibold text-lg">Ready</p>
-                  {finalUrl ? (
-                    <a
-                      href={finalUrl}
-                      target="_blank"
-                      rel="noopener"
-                      className="flex items-center gap-2 bg-primary hover:bg-primary/90 rounded-full px-8 py-3 text-sm font-bold text-white"
-                    >
+                  {finalUrl && (
+                    <a href={finalUrl} target="_blank" rel="noopener" className="flex items-center gap-2 bg-primary hover:bg-primary/90 rounded-full px-8 py-3 text-sm font-bold text-white">
                       <Download className="w-4 h-4" /> Open download
                     </a>
-                  ) : null}
+                  )}
                 </>
               )}
               {status === "error" && (
@@ -254,14 +204,7 @@ export function DownloadPage() {
                   <p className="text-white font-semibold text-lg">Unavailable</p>
                   <p className="text-zinc-400 text-sm text-center max-w-sm">{errorMsg}</p>
                   <div className="flex gap-3">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        startedRef.current = false;
-                        setSeconds(COUNTDOWN);
-                        setStatus("countdown");
-                      }}
-                    >
+                    <Button variant="secondary" onClick={() => { startedRef.current = false; setSeconds(COUNTDOWN); setStatus("countdown"); }}>
                       Try again
                     </Button>
                     <Button asChild variant="outline">
