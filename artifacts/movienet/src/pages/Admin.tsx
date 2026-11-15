@@ -67,7 +67,7 @@ async function api(path: string, init?: RequestInit) {
   return data;
 }
 
-export default function Admin() {
+export function Admin() {
   const [tab, setTab] = useState<"announcements" | "users" | "crawler">("crawler");
   const [me, setMe] = useState<{ userId: string | null; isAdmin: boolean } | null>(null);
   const [anns, setAnns] = useState<Ann[]>([]);
@@ -450,6 +450,8 @@ export default function Admin() {
     </div>
   );
 }
+
+export default Admin;
 
 function Stat({
   label,
