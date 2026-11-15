@@ -93,8 +93,8 @@ export function Contact() {
             <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
               <Mail className="w-5 h-5 text-primary mb-3" />
               <p className="font-semibold text-white mb-1">Direct email</p>
-              <a href="mailto:hello@movienet.app" className="text-sm text-primary hover:underline underline-offset-4">
-                hello@movienet.app
+              <a href="mailto: madaraeyeinc@gmail.com" className="text-sm text-primary hover:underline underline-offset-4">
+                madaraeyeinc@gmail.com
               </a>
             </div>
             <div className="mt-2">
