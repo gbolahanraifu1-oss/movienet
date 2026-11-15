@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@clerk/react";
 import {
   Megaphone,
   Users,
@@ -53,23 +54,31 @@ type CrawlerStatus = {
   };
 };
 
-async function api(path: string, init?: RequestInit) {
-  const r = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-    credentials: "include",
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-  return data;
-}
-
-export function Admin() {
+export default function Admin() {
+  const { isLoaded, isSignedIn, userId, getToken } = useAuth();
   const [tab, setTab] = useState<"announcements" | "users" | "crawler">("crawler");
   const [me, setMe] = useState<{ userId: string | null; isAdmin: boolean } | null>(null);
+
+  const api = useCallback(
+    async (path: string, init?: RequestInit) => {
+      const token = await getToken().catch(() => null);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...((init?.headers as Record<string, string>) || {}),
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(path, {
+        ...init,
+        headers,
+        credentials: "include",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+      return data;
+    },
+    [getToken]
+  );
+
   const [anns, setAnns] = useState<Ann[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [title, setTitle] = useState("");
@@ -81,13 +90,19 @@ export function Admin() {
   const [busy, setBusy] = useState(false);
 
   const loadMe = useCallback(async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setMe({ userId: null, isAdmin: false });
+      return;
+    }
     try {
       const d = await api("/api/admin/me");
       setMe(d);
     } catch (e: any) {
       setErr(e.message);
+      setMe({ userId: userId || null, isAdmin: false });
     }
-  }, []);
+  }, [api, isLoaded, isSignedIn, userId]);
 
   const loadAnns = useCallback(async () => {
     try {
@@ -96,7 +111,7 @@ export function Admin() {
     } catch (e: any) {
       setErr(e.message);
     }
-  }, []);
+  }, [api]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -105,7 +120,7 @@ export function Admin() {
     } catch (e: any) {
       setErr(e.message);
     }
-  }, []);
+  }, [api]);
 
   const loadCrawl = useCallback(async () => {
     try {
@@ -114,7 +129,7 @@ export function Admin() {
     } catch (e: any) {
       setErr(e.message);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     loadMe();
@@ -197,10 +212,47 @@ export function Admin() {
     }
   }
 
-  if (me && !me.isAdmin) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
-        <p className="text-zinc-400">Admin only.</p>
+        <p className="text-zinc-400 text-sm">Loading session…</p>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    const next = encodeURIComponent("/admin");
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 gap-3 text-center">
+        <p className="text-zinc-300 font-semibold">Sign in required</p>
+        <a
+          href={`/sign-in?redirect_url=${next}`}
+          className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold"
+        >
+          Sign in
+        </a>
+      </div>
+    );
+  }
+
+  if (me && !me.isAdmin) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 gap-2 text-center">
+        <p className="text-zinc-300 font-semibold">Admin only</p>
+        <p className="text-zinc-500 text-xs font-mono max-w-sm break-all">
+          Your Clerk user id: {userId || me.userId || "—"}
+        </p>
+        <p className="text-zinc-600 text-xs max-w-sm">
+          Add this id to server env ADMIN_USER_IDS (comma-separated), then redeploy api-server.
+        </p>
+      </div>
+    );
+  }
+
+  if (!me) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
+        <p className="text-zinc-400 text-sm">Checking admin access…</p>
       </div>
     );
   }
@@ -232,7 +284,9 @@ export function Admin() {
               type="button"
               onClick={() => setTab(id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
-                tab === id ? "bg-violet-600 text-white" : "bg-zinc-900 text-zinc-300 border border-white/10"
+                tab === id
+                  ? "bg-violet-600 text-white"
+                  : "bg-zinc-900 text-zinc-300 border border-white/10"
               }`}
             >
               <Icon className="w-4 h-4" /> {label}
@@ -302,7 +356,10 @@ export function Admin() {
             <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
               <Stat label="Status" value={running ? "RUNNING" : "Idle"} hot={running} />
               <Stat label="Type" value={c?.type || "—"} />
-              <Stat label="Page" value={c?.page != null ? `${c.page}/${c.maxPages || "?"}` : "—"} />
+              <Stat
+                label="Page"
+                value={c?.page != null ? `\( {c.page}/ \){c.maxPages || "?"}` : "—"}
+              />
               <Stat label="Endpoint" value={c?.endpoint || "—"} />
               <Stat label="Saved" value={String(c?.saved ?? 0)} />
               <Stat label="Skipped" value={String(c?.skipped ?? 0)} />
@@ -317,7 +374,10 @@ export function Admin() {
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                 {Object.entries(c?.cacheByType || {}).map(([k, v]) => (
-                  <div key={k} className="rounded-lg bg-zinc-950/80 border border-white/5 px-3 py-2">
+                  <div
+                    key={k}
+                    className="rounded-lg bg-zinc-950/80 border border-white/5 px-3 py-2"
+                  >
                     <p className="text-zinc-500 text-[10px] uppercase">{k}</p>
                     <p className="font-mono font-semibold">{v}</p>
                   </div>
@@ -328,7 +388,10 @@ export function Admin() {
             <div className="rounded-2xl border border-white/10 bg-black/60 p-3">
               <p className="text-xs text-zinc-500 mb-2">Live logs</p>
               <pre className="text-[11px] leading-relaxed text-emerald-400/90 max-h-64 overflow-auto font-mono whitespace-pre-wrap">
-                {(c?.logs && c.logs.length ? c.logs : ["No logs yet — start a crawler"]).join("\n")}
+                {(c?.logs && c.logs.length
+                  ? c.logs
+                  : ["No logs yet — start a crawler"]
+                ).join("\n")}
               </pre>
             </div>
           </div>
@@ -373,7 +436,9 @@ export function Admin() {
               </div>
             </div>
 
-            {anns.length === 0 && <p className="text-zinc-500 text-sm">No announcements yet.</p>}
+            {anns.length === 0 && (
+              <p className="text-zinc-500 text-sm">No announcements yet.</p>
+            )}
             <div className="space-y-2">
               {anns.map((a) => (
                 <div
@@ -417,7 +482,11 @@ export function Admin() {
                 key={u.id}
                 className="rounded-xl border border-white/10 bg-zinc-900/40 p-4 flex items-center gap-3"
               >
-                <img src={u.imageUrl} alt="" className="w-10 h-10 rounded-full bg-zinc-800" />
+                <img
+                  src={u.imageUrl}
+                  alt=""
+                  className="w-10 h-10 rounded-full bg-zinc-800"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold truncate">
                     {[u.firstName, u.lastName].filter(Boolean).join(" ") || "User"}
@@ -451,8 +520,6 @@ export function Admin() {
   );
 }
 
-export default Admin;
-
 function Stat({
   label,
   value,
@@ -465,7 +532,11 @@ function Stat({
   return (
     <div className="rounded-xl bg-zinc-950/80 border border-white/5 px-2 py-3">
       <p className="text-[10px] uppercase text-zinc-500">{label}</p>
-      <p className={`text-sm font-semibold truncate ${hot ? "text-emerald-400" : ""}`}>{value}</p>
+      <p
+        className={`text-sm font-semibold truncate ${hot ? "text-emerald-400" : ""}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
