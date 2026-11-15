@@ -6,7 +6,7 @@ import {
   remainingGuestDownloads,
   recordGuestDownload,
   GUEST_DOWNLOAD_LIMIT,
-} from "@/lib/guestLimits";
+} from "./guestLimits";
 import { AdSlot } from "../components/AdSlot";
 import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
