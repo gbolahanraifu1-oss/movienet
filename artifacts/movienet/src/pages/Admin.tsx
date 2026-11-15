@@ -357,9 +357,14 @@ export function Admin() {
               <Stat label="Status" value={running ? "RUNNING" : "Idle"} hot={running} />
               <Stat label="Type" value={c?.type || "—"} />
               <Stat
-                label="Page"
-                value={c?.page != null ? `\( {c.page}/ \){c.maxPages || "?"}` : "—"}
-              />
+  label="Page"
+  value={
+    c?.page == null
+      ? "—"
+      : String(c.page) + "/" + String(c.maxPages != null ? c.maxPages : "?")
+  }
+/>
+
               <Stat label="Endpoint" value={c?.endpoint || "—"} />
               <Stat label="Saved" value={String(c?.saved ?? 0)} />
               <Stat label="Skipped" value={String(c?.skipped ?? 0)} />
