@@ -83,6 +83,7 @@ export function Admin() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [level, setLevel] = useState("info");
+  const [placement, setPlacement] = useState<"center" | "top">("center");
   const [err, setErr] = useState<string | null>(null);
   const [crawl, setCrawl] = useState<CrawlerStatus | null>(null);
   const [pages, setPages] = useState(3);
@@ -152,7 +153,7 @@ export function Admin() {
     try {
       await api("/api/admin/announcements", {
         method: "POST",
-        body: JSON.stringify({ title, body, level }),
+        body: JSON.stringify({ title, body, level, placement }),
       });
       setTitle("");
       setBody("");
@@ -410,6 +411,15 @@ export function Admin() {
                   <option value="info">Info</option>
                   <option value="warning">Warning</option>
                   <option value="success">Success</option>
+                </select>
+                <select
+                  value={placement}
+                  onChange={(e) => setPlacement(e.target.value as "center" | "top")}
+                  className="rounded-xl bg-zinc-950 border border-white/10 px-3 py-2 text-sm"
+                  title="Banner style"
+                >
+                  <option value="center">Center screen</option>
+                  <option value="top">Top banner</option>
                 </select>
                 <button
                   type="button"
