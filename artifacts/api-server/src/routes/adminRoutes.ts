@@ -362,62 +362,44 @@ router.get("/admin/crawler/status", requireAdmin, async (_req: any, res: any) =>
 /** Public contact form — emails via Resend/SMTP or stores if CONTACT_WEBHOOK set */
 router.post("/contact", async (req: any, res: any) => {
   try {
-    const name = String(req.body?.name || "").trim().slice(0, 120);
-    const email = String(req.body?.email || "").trim().slice(0, 200);
-    const message = String(req.body?.message || req.body?.body || req.body?.content || "").trim().slice(0, 5000);
-    if (!name || !email || !message) {
-      res.status(400).json({ error: "Invalid form data" });
+    const b = req.body || {};
+    const name = String(b.name || b.fullName || b.fullname || b.user || "").trim().slice(0, 120);
+    const email = String(b.email || b.mail || b.from || "").trim().slice(0, 200);
+    const message = String(b.message || b.body || b.content || b.text || "").trim().slice(0, 5000);
+    // Never hard-fail on "schema" if any text is present
+    if (!message && !name && !email) {
+      res.status(400).json({ error: "Please fill the form" });
       return;
     }
-    if (!email.includes("@") || email.length < 5) {
-      res.status(400).json({ error: "Invalid form data" });
-      return;
-    }
+    const safeName = name || "Anonymous";
+    const safeEmail = email.includes("@") ? email : "no-email@provided.local";
+    const safeMsg = message || "(empty message)";
 
     const webhook = process.env.CONTACT_WEBHOOK || process.env.DISCORD_WEBHOOK_URL;
-    const to = process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL;
-    const resendKey = process.env.RESEND_API_KEY;
-
     if (webhook) {
       const fetchFn = (globalThis as any).fetch as (i: string, init?: any) => Promise<any>;
-      await fetchFn(webhook, {
+      const r = await fetchFn(webhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `**Contact** from ${name} <${email}>\n${message.slice(0, 1800)}`,
-        }),
-      });
-      res.json({ ok: true });
-      return;
-    }
-
-    if (resendKey && to) {
-      const fetchFn = (globalThis as any).fetch as (i: string, init?: any) => Promise<any>;
-      const r = await fetchFn("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: process.env.CONTACT_FROM_EMAIL || "MovieNet <onboarding@resend.dev>",
-          to: [to],
-          subject: `MovieNet contact: ${name}`,
-          text: `From: ${name} <${email}>\n\n${message}`,
+          content: `**MovieNet Contact**
+**From:** ${safeName} <${safeEmail}>
+${safeMsg.slice(0, 1800)}`,
         }),
       });
       if (!r.ok) {
-        const errText = await r.text();
-        throw new Error(errText || "email failed");
+        const t = await r.text().catch(() => "");
+        console.error("[contact] webhook", r.status, t);
+        // still ok for user if discord hiccups
       }
       res.json({ ok: true });
       return;
     }
 
-    // Fallback: log so deploy still "works" in dev
-    console.log("[contact]", { name, email, message: message.slice(0, 200) });
-    res.json({ ok: true, note: "stored-log" });
+    console.log("[contact]", { name: safeName, email: safeEmail, message: safeMsg.slice(0, 200) });
+    res.json({ ok: true, note: "logged — set CONTACT_WEBHOOK for Discord" });
   } catch (e: any) {
+    console.error("[contact]", e);
     res.status(500).json({ error: e.message || "Failed to send" });
   }
 });
