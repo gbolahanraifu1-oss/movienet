@@ -75,6 +75,7 @@ export function UserDock() {
   const [tab, setTab] = useState<Tab>(null);
   const [watchlist, setWatchlist] = useState<ListItem[]>([]);
   const [recent, setRecent] = useState<ListItem[]>([]);
+  const [announcements, setAnnouncements] = useState<{ id: number; title: string; body: string }[]>([]);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
       return (localStorage.getItem(THEME_KEY) as "dark" | "light") || "dark";
@@ -97,6 +98,19 @@ export function UserDock() {
     if (!tab) return;
     setWatchlist(loadList(WL_KEY));
     setRecent(loadList(RECENT_KEY));
+    if (tab === "notifications") {
+      fetch("/api/announcements")
+        .then((r) => r.json())
+        .then((data) => {
+          const list = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.announcements)
+              ? data.announcements
+              : [];
+          setAnnouncements(list.filter((a: any) => a?.active !== false));
+        })
+        .catch(() => setAnnouncements([]));
+    }
   }, [tab, loc]);
 
   if (!isLoaded || !isSignedIn) return null;
@@ -256,9 +270,19 @@ export function UserDock() {
             )}
 
             {tab === "notifications" && (
-              <p className={`text-zinc-400 text-sm p-4 ${glassPill}`}>
-                Site announcements show as banners. Push alerts coming later.
-              </p>
+              <div className="space-y-2">
+                {announcements.length === 0 && (
+                  <p className={`text-zinc-400 text-sm text-center py-6 ${glassPill}`}>
+                    No announcements right now.
+                  </p>
+                )}
+                {announcements.map((a) => (
+                  <div key={a.id} className={`p-4 text-left ${glassPill}`}>
+                    <p className="text-sm font-semibold text-white">{a.title}</p>
+                    <p className="text-xs text-zinc-400 mt-1 whitespace-pre-wrap">{a.body}</p>
+                  </div>
+                ))}
+              </div>
             )}
 
             {tab === "settings" && (
