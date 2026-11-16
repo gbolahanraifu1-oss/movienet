@@ -244,4 +244,3 @@ export default function App() {
     </WouterRouter>
   );
 }
-
