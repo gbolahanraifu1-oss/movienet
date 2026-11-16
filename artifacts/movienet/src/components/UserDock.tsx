@@ -13,6 +13,7 @@ import {
   Moon,
   LogOut,
   ChevronRight,
+  Camera,
 } from "lucide-react";
 
 type Tab = "menu" | "watchlist" | "recent" | "notifications" | "settings" | null;
@@ -41,8 +42,10 @@ function loadList(key: string): ListItem[] {
 export function trackRecentStream(item: ListItem) {
   try {
     const prev = loadList(RECENT_KEY).filter((x) => x.id !== item.id);
-    const next = [{ ...item, at: Date.now() }, ...prev].slice(0, 40);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    localStorage.setItem(
+      RECENT_KEY,
+      JSON.stringify([{ ...item, at: Date.now() }, ...prev].slice(0, 40))
+    );
   } catch {
     /* */
   }
@@ -51,10 +54,18 @@ export function trackRecentStream(item: ListItem) {
 export function toggleWatchlist(item: ListItem): boolean {
   const prev = loadList(WL_KEY);
   const exists = prev.some((x) => x.id === item.id);
-  const next = exists ? prev.filter((x) => x.id !== item.id) : [{ ...item, at: Date.now() }, ...prev];
+  const next = exists
+    ? prev.filter((x) => x.id !== item.id)
+    : [{ ...item, at: Date.now() }, ...prev];
   localStorage.setItem(WL_KEY, JSON.stringify(next.slice(0, 100)));
   return !exists;
 }
+
+/** Shared liquid-glass surface */
+const glass =
+  "bg-zinc-800/80 backdrop-blur-2xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.08)]";
+const glassPill =
+  "rounded-2xl bg-zinc-700/50 backdrop-blur-md border border-white/10 shadow-inner hover:bg-zinc-600/50 hover:border-white/20 transition-colors";
 
 export function UserDock() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -90,68 +101,90 @@ export function UserDock() {
 
   if (!isLoaded || !isSignedIn) return null;
 
-  const glass =
-    "backdrop-blur-xl bg-white/10 dark:bg-zinc-900/70 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.35)]";
+  const nav = [
+    { id: "watchlist" as const, Icon: Bookmark, label: "List" },
+    { id: "recent" as const, Icon: History, label: "Recent" },
+    { id: "notifications" as const, Icon: Bell, label: "Alerts" },
+    { id: "settings" as const, Icon: Settings, label: "Settings" },
+    { id: "menu" as const, Icon: User, label: "You" },
+  ];
 
   return (
     <>
-      {/* Bottom liquid-glass dock — logged in only */}
-      <div className="fixed bottom-0 inset-x-0 z-50 flex justify-center pointer-events-none pb-3 px-3">
-        <div
+      {/* Floating ash glass pill — clear of content */}
+      <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+        <nav
           className={
-            "pointer-events-auto flex items-center gap-1 rounded-2xl px-2 py-1.5 max-w-md w-full " +
+            "pointer-events-auto flex items-center gap-1 rounded-full px-2 py-1.5 max-w-sm w-full " +
             glass
           }
+          style={{ background: "rgba(39, 39, 42, 0.92)" }}
         >
-          {(
-            [
-              ["watchlist", Bookmark, "List"],
-              ["recent", History, "Recent"],
-              ["notifications", Bell, "Alerts"],
-              ["settings", Settings, "Settings"],
-              ["menu", User, "You"],
-            ] as const
-          ).map(([id, Icon, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(tab === id ? null : id)}
-              className={`flex-1 flex flex-col items-center gap-0.5 rounded-xl py-2 text-[10px] ${
-                tab === id ? "text-violet-300 bg-white/10" : "text-zinc-300 hover:text-white"
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              {label}
-            </button>
-          ))}
-        </div>
+          {nav.map(({ id, Icon, label }) => {
+            const on = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(on ? null : id)}
+                className={
+                  "flex-1 flex flex-col items-center gap-0.5 rounded-full py-2.5 text-[10px] font-medium transition-all " +
+                  (on
+                    ? "bg-violet-600 text-white shadow-lg shadow-violet-900/40"
+                    : "text-zinc-300 hover:text-white hover:bg-white/10")
+                }
+              >
+                <Icon className="w-[18px] h-[18px]" strokeWidth={on ? 2.5 : 2} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {tab && (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end sm:justify-center">
           <button
             type="button"
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             aria-label="Close"
             onClick={() => setTab(null)}
           />
-          <div className={`relative rounded-t-3xl max-h-[75vh] overflow-y-auto p-5 pb-28 ${glass}`}>
+          <div
+            className={
+              "relative mx-3 mb-24 sm:mb-0 sm:mx-auto sm:max-w-md w-auto rounded-3xl max-h-[70vh] overflow-y-auto p-5 " +
+              glass
+            }
+            style={{ background: "rgba(24, 24, 27, 0.94)" }}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white capitalize">
-                {tab === "menu" ? "Profile" : tab}
+              <h2 className="text-base font-bold text-white tracking-wide">
+                {tab === "menu"
+                  ? "Profile"
+                  : tab === "watchlist"
+                    ? "Watchlist"
+                    : tab === "recent"
+                      ? "Recent"
+                      : tab === "notifications"
+                        ? "Alerts"
+                        : "Settings"}
               </h2>
-              <button type="button" onClick={() => setTab(null)} className="p-2 text-zinc-400">
-                <X className="w-5 h-5" />
+              <button
+                type="button"
+                onClick={() => setTab(null)}
+                className="rounded-full p-2 bg-zinc-700/80 border border-white/10 text-zinc-200"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {tab === "menu" && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
+              <div className="space-y-3">
+                <div className={`flex items-center gap-3 p-3 ${glassPill}`}>
                   <img
                     src={user?.imageUrl}
                     alt=""
-                    className="w-14 h-14 rounded-full border border-white/20"
+                    className="w-14 h-14 rounded-full border-2 border-white/20 object-cover"
                   />
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">
@@ -165,21 +198,25 @@ export function UserDock() {
                 <button
                   type="button"
                   onClick={() => openUserProfile()}
-                  className="w-full flex items-center justify-between rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white"
+                  className={`w-full flex items-center justify-between px-4 py-3.5 text-sm text-white ${glassPill}`}
                 >
-                  Update profile & photo <ChevronRight className="w-4 h-4 text-zinc-500" />
+                  <span className="flex items-center gap-2">
+                    <Camera className="w-4 h-4 text-zinc-400" />
+                    Update profile & photo
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-zinc-500" />
                 </button>
                 <Link
                   href="/subscription"
                   onClick={() => setTab(null)}
-                  className="w-full flex items-center gap-2 rounded-xl bg-amber-500/15 border border-amber-400/20 px-4 py-3 text-sm text-amber-100"
+                  className={`w-full flex items-center gap-2 px-4 py-3.5 text-sm text-amber-100 ${glassPill}`}
                 >
-                  <Crown className="w-4 h-4" /> Subscription
+                  <Crown className="w-4 h-4 text-amber-400" /> Subscription
                 </Link>
                 <button
                   type="button"
                   onClick={() => signOut()}
-                  className="w-full flex items-center gap-2 rounded-xl border border-red-500/30 text-red-300 px-4 py-3 text-sm"
+                  className={`w-full flex items-center gap-2 px-4 py-3.5 text-sm text-red-300 ${glassPill}`}
                 >
                   <LogOut className="w-4 h-4" /> Sign out
                 </button>
@@ -189,21 +226,27 @@ export function UserDock() {
             {(tab === "watchlist" || tab === "recent") && (
               <div className="space-y-2">
                 {(tab === "watchlist" ? watchlist : recent).length === 0 && (
-                  <p className="text-zinc-400 text-sm">Nothing here yet.</p>
+                  <p className={`text-zinc-400 text-sm text-center py-8 ${glassPill}`}>
+                    Nothing here yet.
+                  </p>
                 )}
                 {(tab === "watchlist" ? watchlist : recent).map((item) => (
                   <Link
-                    key={item.id + (item.at || "")}
+                    key={item.id + String(item.at || "")}
                     href={item.href || "/"}
                     onClick={() => setTab(null)}
-                    className="flex gap-3 rounded-xl bg-white/5 border border-white/10 p-2 hover:bg-white/10"
+                    className={`flex gap-3 p-2 ${glassPill}`}
                   >
                     {item.poster ? (
-                      <img src={item.poster} alt="" className="w-12 h-16 object-cover rounded-lg" />
+                      <img
+                        src={item.poster}
+                        alt=""
+                        className="w-12 h-16 object-cover rounded-xl"
+                      />
                     ) : (
-                      <div className="w-12 h-16 rounded-lg bg-zinc-800" />
+                      <div className="w-12 h-16 rounded-xl bg-zinc-900" />
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 self-center">
                       <p className="text-sm font-medium text-white truncate">{item.title}</p>
                       <p className="text-[10px] text-zinc-500 uppercase">{item.type || ""}</p>
                     </div>
@@ -213,34 +256,36 @@ export function UserDock() {
             )}
 
             {tab === "notifications" && (
-              <p className="text-zinc-400 text-sm">
-                Site announcements appear at the top. Push notifications coming soon.
+              <p className={`text-zinc-400 text-sm p-4 ${glassPill}`}>
+                Site announcements show as banners. Push alerts coming later.
               </p>
             )}
 
             {tab === "settings" && (
-              <div className="space-y-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wide">Theme</p>
+              <div className="space-y-3">
+                <p className="text-[10px] uppercase tracking-widest text-zinc-500 px-1">Theme</p>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setTheme("dark")}
-                    className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm border ${
-                      theme === "dark"
-                        ? "bg-violet-600 border-violet-400 text-white"
-                        : "bg-white/5 border-white/10 text-zinc-300"
-                    }`}
+                    className={
+                      "flex-1 flex items-center justify-center gap-2 py-3.5 text-sm rounded-2xl border transition-all " +
+                      (theme === "dark"
+                        ? "bg-violet-600 border-violet-400/50 text-white shadow-lg"
+                        : glassPill + " text-zinc-300")
+                    }
                   >
                     <Moon className="w-4 h-4" /> Dark
                   </button>
                   <button
                     type="button"
                     onClick={() => setTheme("light")}
-                    className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm border ${
-                      theme === "light"
-                        ? "bg-violet-600 border-violet-400 text-white"
-                        : "bg-white/5 border-white/10 text-zinc-300"
-                    }`}
+                    className={
+                      "flex-1 flex items-center justify-center gap-2 py-3.5 text-sm rounded-2xl border transition-all " +
+                      (theme === "light"
+                        ? "bg-violet-600 border-violet-400/50 text-white shadow-lg"
+                        : glassPill + " text-zinc-300")
+                    }
                   >
                     <Sun className="w-4 h-4" /> Light
                   </button>
@@ -248,9 +293,9 @@ export function UserDock() {
                 <button
                   type="button"
                   onClick={() => openUserProfile()}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-left text-white"
+                  className={`w-full px-4 py-3.5 text-sm text-left text-white ${glassPill}`}
                 >
-                  Manage account (email, password, profile picture)
+                  Manage account (email, password, photo)
                 </button>
               </div>
             )}
