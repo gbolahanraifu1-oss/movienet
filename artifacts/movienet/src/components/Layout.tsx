@@ -1,4 +1,5 @@
 import { AnnouncementBanner } from "./AnnouncementBanner";
+import { UserDock } from "./UserDock";
 import { Link, useLocation } from "wouter";
 import { Show, useUser, useClerk } from "@clerk/react";
 import { Search, Popcorn, Flame, Calendar, Trophy, PlaySquare, Menu, X, User } from "lucide-react";
@@ -281,6 +282,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
+      <UserDock />
     </div>
   );
 }
