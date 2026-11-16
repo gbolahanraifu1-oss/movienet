@@ -24,4 +24,3 @@ export function Subscription() {
     </div>
   );
 }
-
