@@ -54,7 +54,7 @@ type CrawlerStatus = {
   };
 };
 
-export default function Admin() {
+export function Admin() {
   const { isLoaded, isSignedIn, userId, getToken } = useAuth();
   const [tab, setTab] = useState<"announcements" | "users" | "crawler">("crawler");
   const [me, setMe] = useState<{ userId: string | null; isAdmin: boolean } | null>(null);
