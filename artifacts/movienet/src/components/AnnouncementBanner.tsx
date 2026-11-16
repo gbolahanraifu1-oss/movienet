@@ -24,7 +24,14 @@ export function AnnouncementBanner() {
     fetch("/api/announcements")
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setItems(data);
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.announcements)
+            ? data.announcements
+            : [];
+        setItems(
+          list.filter((a: Item) => a && a.id != null && (a as any).active !== false)
+        );
       })
       .catch(() => {});
   }, []);
@@ -34,10 +41,7 @@ export function AnnouncementBanner() {
       const next = new Set(prev);
       next.add(id);
       try {
-        sessionStorage.setItem(
-          "mn_ann_dismiss",
-          JSON.stringify([...next])
-        );
+        sessionStorage.setItem("mn_ann_dismiss", JSON.stringify([...next]));
       } catch {
         /* */
       }
@@ -49,7 +53,7 @@ export function AnnouncementBanner() {
   if (!visible.length) return null;
 
   return (
-    <div className="space-y-2 px-3 pt-2">
+    <div className="space-y-2 px-3 pt-2 z-40 relative">
       {visible.map((a) => (
         <div
           key={a.id}
@@ -62,9 +66,7 @@ export function AnnouncementBanner() {
             <Megaphone className="w-4 h-4 shrink-0 mt-0.5 opacity-90" />
             <div>
               <p className="font-bold">{a.title}</p>
-              <p className="opacity-90 text-xs sm:text-sm mt-0.5 whitespace-pre-wrap">
-                {a.body}
-              </p>
+              <p className="opacity-90 text-xs sm:text-sm mt-0.5 whitespace-pre-wrap">{a.body}</p>
             </div>
           </div>
           <button
