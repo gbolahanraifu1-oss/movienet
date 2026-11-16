@@ -67,6 +67,7 @@ type Ann = {
   title: string;
   body: string;
   level: string;
+  placement: string;
   active: boolean;
   created_by: string | null;
   created_at: string;
@@ -103,12 +104,16 @@ async function ensureTable() {
       title TEXT NOT NULL,
       body TEXT NOT NULL,
       level TEXT NOT NULL DEFAULT 'info',
+      placement TEXT NOT NULL DEFAULT 'center',
       active BOOLEAN NOT NULL DEFAULT true,
       created_by TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+  try {
+    await p.query(`ALTER TABLE announcements ADD COLUMN IF NOT EXISTS placement TEXT NOT NULL DEFAULT 'center'`);
+  } catch (_) {}
   tableReady = true;
 }
 
@@ -125,15 +130,23 @@ async function listAnnouncements(all: boolean) {
   return rows;
 }
 
-async function createAnnouncement(title: string, body: string, level: string, userId: string) {
+async function createAnnouncement(
+  title: string,
+  body: string,
+  level: string,
+  userId: string,
+  placement: string = "center"
+) {
   await ensureTable();
   const p = await getPool();
+  const place = placement === "top" ? "top" : "center";
   if (!p) {
     const row: Ann = {
       id: memId++,
       title,
       body,
       level: level || "info",
+      placement: place,
       active: true,
       created_by: userId,
       created_at: new Date().toISOString(),
@@ -143,8 +156,8 @@ async function createAnnouncement(title: string, body: string, level: string, us
     return row;
   }
   const { rows } = await p.query(
-    `INSERT INTO announcements (title, body, level, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [title, body, level || "info", userId]
+    `INSERT INTO announcements (title, body, level, placement, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [title, body, level || "info", place, userId]
   );
   return rows[0];
 }
@@ -270,11 +283,12 @@ router.post("/admin/announcements", requireAdmin, async (req: any, res: any) => 
     const title = String(req.body?.title || "").trim();
     const body = String(req.body?.body || "").trim();
     const level = String(req.body?.level || "info");
+    const placement = String(req.body?.placement || "center") === "top" ? "top" : "center";
     if (!title || !body) {
       res.status(400).json({ error: "title and body required" });
       return;
     }
-    const row = await createAnnouncement(title, body, level, req.userId);
+    const row = await createAnnouncement(title, body, level, req.userId, placement);
     res.json({ announcement: row });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -350,13 +364,13 @@ router.post("/contact", async (req: any, res: any) => {
   try {
     const name = String(req.body?.name || "").trim().slice(0, 120);
     const email = String(req.body?.email || "").trim().slice(0, 200);
-    const message = String(req.body?.message || "").trim().slice(0, 5000);
+    const message = String(req.body?.message || req.body?.body || req.body?.content || "").trim().slice(0, 5000);
     if (!name || !email || !message) {
-      res.status(400).json({ error: "name, email, message required" });
+      res.status(400).json({ error: "Invalid form data" });
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      res.status(400).json({ error: "invalid email" });
+    if (!email.includes("@") || email.length < 5) {
+      res.status(400).json({ error: "Invalid form data" });
       return;
     }
 
