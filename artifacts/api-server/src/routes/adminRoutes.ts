@@ -305,13 +305,14 @@ router.delete("/admin/announcements/:id", requireAdmin, async (req: any, res: an
 router.post("/admin/crawler/start", requireAdmin, async (req: any, res: any) => {
   try {
     const type = String(req.body?.type || "movie").toLowerCase(); // movie | tv | anime
-    const pages = Number(req.body?.pages ?? 3);
+    let pages = Number(req.body?.pages);
+    if (!Number.isFinite(pages) || pages < 0) pages = 3;
     const secret = vpsSecret();
     if (!secret) {
       res.status(500).json({ error: "API_SECRET / VPS_SECRET not configured on api-server" });
       return;
     }
-    const q = `/admin/crawl?secret=${encodeURIComponent(secret)}&type=${encodeURIComponent(type)}&pages=${pages || 0}`;
+    const q = `/admin/crawl?secret=${encodeURIComponent(secret)}&type=${encodeURIComponent(type)}&pages=${encodeURIComponent(String(pages))}`;
     const { ok, status, data } = await vpsFetch(q);
     res.status(ok ? 200 : status || 502).json(data || { error: "VPS error" });
   } catch (e: any) {
@@ -343,4 +344,69 @@ router.get("/admin/crawler/status", requireAdmin, async (_req: any, res: any) =>
   }
 });
 
+
+/** Public contact form — emails via Resend/SMTP or stores if CONTACT_WEBHOOK set */
+router.post("/contact", async (req: any, res: any) => {
+  try {
+    const name = String(req.body?.name || "").trim().slice(0, 120);
+    const email = String(req.body?.email || "").trim().slice(0, 200);
+    const message = String(req.body?.message || "").trim().slice(0, 5000);
+    if (!name || !email || !message) {
+      res.status(400).json({ error: "name, email, message required" });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: "invalid email" });
+      return;
+    }
+
+    const webhook = process.env.CONTACT_WEBHOOK || process.env.DISCORD_WEBHOOK_URL;
+    const to = process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL;
+    const resendKey = process.env.RESEND_API_KEY;
+
+    if (webhook) {
+      const fetchFn = (globalThis as any).fetch as (i: string, init?: any) => Promise<any>;
+      await fetchFn(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `**Contact** from ${name} <${email}>\n${message.slice(0, 1800)}`,
+        }),
+      });
+      res.json({ ok: true });
+      return;
+    }
+
+    if (resendKey && to) {
+      const fetchFn = (globalThis as any).fetch as (i: string, init?: any) => Promise<any>;
+      const r = await fetchFn("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: process.env.CONTACT_FROM_EMAIL || "MovieNet <onboarding@resend.dev>",
+          to: [to],
+          subject: `MovieNet contact: ${name}`,
+          text: `From: ${name} <${email}>\n\n${message}`,
+        }),
+      });
+      if (!r.ok) {
+        const errText = await r.text();
+        throw new Error(errText || "email failed");
+      }
+      res.json({ ok: true });
+      return;
+    }
+
+    // Fallback: log so deploy still "works" in dev
+    console.log("[contact]", { name, email, message: message.slice(0, 200) });
+    res.json({ ok: true, note: "stored-log" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to send" });
+  }
+});
+
 export default router;
+
