@@ -15,7 +15,12 @@ const contactSchema = z.object({
   category: z.enum(["general", "dmca", "bug", "partnership"]).default("general"),
 });
 
-function flattenIssues(issues: z.ZodFlattenedError<any> | undefined): string {
+type FlatErrors = {
+  formErrors: string[];
+  fieldErrors: Record<string, string[] | undefined>;
+};
+
+function flattenIssues(issues: FlatErrors | undefined): string {
   if (!issues) return "Invalid form data";
   const parts: string[] = [];
   for (const [field, msgs] of Object.entries(issues.fieldErrors || {})) {
@@ -29,7 +34,6 @@ function flattenIssues(issues: z.ZodFlattenedError<any> | undefined): string {
 
 router.post("/contact", async (req: any, res: any) => {
   const body = req.body || {};
-  // tolerate aliases
   const normalized = {
     name: body.name ?? body.fullName ?? "",
     email: body.email ?? body.mail ?? "",
@@ -40,7 +44,7 @@ router.post("/contact", async (req: any, res: any) => {
 
   const parsed = contactSchema.safeParse(normalized);
   if (!parsed.success) {
-    const flat = parsed.error.flatten();
+    const flat = parsed.error.flatten() as FlatErrors;
     return res.status(400).json({
       error: flattenIssues(flat),
       issues: flat,
@@ -55,7 +59,6 @@ router.post("/contact", async (req: any, res: any) => {
     "contact form submission"
   );
 
-  // Discord / webhook if configured
   const webhook = process.env.CONTACT_WEBHOOK || process.env.DISCORD_WEBHOOK_URL;
   if (webhook) {
     try {
