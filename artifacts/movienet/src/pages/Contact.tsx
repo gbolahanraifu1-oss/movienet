@@ -1,296 +1,230 @@
-import { useState } from "react";
+import { useGetCalendar, useCreateReminder } from "@workspace/api-client-react";
 import { AdSlot } from "../components/AdSlot";
-import { Mail, MessageSquare, Bug, Megaphone, Send, CheckCircle2, MapPin, Clock, AlertCircle } from "lucide-react";
+import { CountdownTimer } from "../components/CountdownTimer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Bell, CalendarIcon, Check } from "lucide-react";
 import { Link } from "wouter";
+import { Show, useAuth } from "@clerk/react";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
-type Category = "general" | "dmca" | "bug" | "partnership";
+const LOCAL_REMINDERS_KEY = "mn_reminders";
 
-const CATEGORIES: { id: Category; icon: typeof Mail; label: string; desc: string }[] = [
-  { id: "general",     icon: MessageSquare, label: "General Inquiry",   desc: "Questions, feedback, anything else" },
-  { id: "dmca",        icon: Megaphone,     label: "DMCA / Copyright",  desc: "Report infringing content" },
-  { id: "bug",         icon: Bug,           label: "Bug Report",        desc: "Something broken? Tell us" },
-  { id: "partnership", icon: Mail,          label: "Partnership",       desc: "Ads, collabs, business enquiries" },
-];
+type LocalReminder = {
+  contentId: string;
+  contentType: string;
+  contentTitle: string;
+  posterUrl?: string | null;
+  releaseDate: string;
+  at: number;
+};
 
-const MIN_MESSAGE = 3;
-
-export function Contact() {
-  const [category, setCategory] = useState<Category>("general");
-  const [form, setForm]         = useState({ name: "", email: "", subject: "", message: "" });
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }));
-    setFieldErrors(fe => {
-      const next = { ...fe };
-      delete next[e.target.name];
-      return next;
-    });
+function loadLocalReminders(): LocalReminder[] {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_REMINDERS_KEY) || "[]");
+  } catch {
+    return [];
   }
+}
 
-  function clientValidate(): string | null {
-    const fe: Record<string, string> = {};
-    if (!form.name.trim()) fe.name = "Name is required";
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      fe.email = "Enter a valid email";
-    }
-    if (!form.subject.trim()) fe.subject = "Subject is required";
-    if (form.message.trim().length < MIN_MESSAGE) {
-      fe.message = `Message must be at least ${MIN_MESSAGE} characters (you wrote ${form.message.trim().length})`;
-    }
-    setFieldErrors(fe);
-    if (Object.keys(fe).length) {
-      return Object.values(fe).join(" · ");
-    }
-    return null;
-  }
+function saveLocalReminder(item: LocalReminder) {
+  const prev = loadLocalReminders().filter((x) => x.contentId !== item.contentId);
+  localStorage.setItem(LOCAL_REMINDERS_KEY, JSON.stringify([item, ...prev].slice(0, 80)));
+}
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+function hasLocalReminder(contentId: string) {
+  return loadLocalReminders().some((x) => x.contentId === contentId);
+}
 
-    const clientErr = clientValidate();
-    if (clientErr) {
-      setError(clientErr);
-      setLoading(false);
+export function Calendar() {
+  const { data, isLoading } = useGetCalendar({});
+  const { toast } = useToast();
+  const { isSignedIn } = useAuth();
+  const createReminder = useCreateReminder();
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSaved(new Set(loadLocalReminders().map((r) => r.contentId)));
+  }, []);
+
+  const handleRemindMe = (entry: any) => {
+    if (!entry?.id || !entry?.title) {
+      toast({
+        title: "Can't set reminder",
+        description: "Missing title data for this release.",
+        variant: "destructive",
+      });
       return;
     }
 
-    try {
-      const res = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, category }),
+    const contentType =
+      entry.type === "anime" || entry.type === "series" ? entry.type === "series" ? "anime" : "anime" : "movie";
+    const releaseDate =
+      entry.releaseDate ||
+      entry.release_date ||
+      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const payload = {
+      contentId: String(entry.id),
+      contentType: contentType === "anime" ? "anime" : "movie",
+      contentTitle: entry.title,
+      posterUrl: entry.posterUrl || entry.poster_path || null,
+      releaseDate: typeof releaseDate === "string" ? releaseDate : new Date(releaseDate).toISOString(),
+    };
+
+    // Always persist locally so the button feels instant and works offline / if API is down
+    saveLocalReminder({ ...payload, at: Date.now() });
+    setSaved((prev) => new Set(prev).add(payload.contentId));
+
+    if (!isSignedIn) {
+      toast({
+        title: "Reminder saved on this device",
+        description: `We'll show ${entry.title} in your Alerts. Sign in to sync across devices.`,
       });
-
-      const body = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // Prefer human message; fall back to fieldErrors from zod
-        let msg = body?.error;
-        if (body?.fieldErrors && typeof body.fieldErrors === "object") {
-          const parts: string[] = [];
-          for (const [k, v] of Object.entries(body.fieldErrors)) {
-            if (Array.isArray(v) && v.length) parts.push(`${k}: ${v.join(", ")}`);
-          }
-          if (parts.length) {
-            msg = parts.join(" · ");
-            const fe: Record<string, string> = {};
-            for (const [k, v] of Object.entries(body.fieldErrors)) {
-              if (Array.isArray(v) && v[0]) fe[k] = String(v[0]);
-            }
-            setFieldErrors(fe);
-          }
-        }
-        throw new Error(msg || `Server error ${res.status}`);
-      }
-
-      setSubmitted(true);
-    } catch (err: any) {
-      setError(err?.message ?? "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
+      return;
     }
-  }
+
+    createReminder.mutate(
+      { data: payload },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Reminder Set!",
+            description: `We'll remind you about ${entry.title}.`,
+          });
+        },
+        onError: (err: any) => {
+          const status = err?.status;
+          const raw = String(err?.data?.error || err?.message || "");
+          const isAuth = status === 401 || /unauthor/i.test(raw);
+          toast({
+            title: "Reminder saved in Alerts",
+            description: isAuth
+              ? "Kept on this device. Sign in anytime to sync across devices."
+              : (raw.slice(0, 140) || "Saved on this device."),
+          });
+        },
+      }
+    );
+  };
 
   return (
-    <div className="min-h-[100dvh] bg-background">
-      <section className="relative overflow-hidden border-b border-white/5 pt-28 pb-16">
-        <div className="pointer-events-none absolute -top-40 right-1/4 w-[500px] h-[500px] rounded-full bg-primary/8 blur-[120px]" />
-        <div className="container mx-auto px-4 max-w-5xl relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-primary" />
-            </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Contact</span>
+    <div className="container mx-auto px-4 py-8 max-w-5xl min-h-[80vh]">
+      <div className="flex flex-col gap-10">
+        <div className="flex flex-col gap-4 text-center items-center py-10">
+          <div className="w-16 h-16 rounded-2xl bg-blue-500/20 flex items-center justify-center mb-2">
+            <CalendarIcon className="w-8 h-8 text-blue-500" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-display font-black text-white mb-4">Get in touch</h1>
-          <p className="text-zinc-400 text-lg max-w-xl">
-            We&apos;re a small team and we actually read everything. Drop us a message — we usually reply within 24 hours.
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold tracking-tight text-white">
+            Drop Calendar
+          </h1>
+          <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+            Never miss a release. Track upcoming movies and anime drops in real-time.
           </p>
         </div>
-      </section>
 
-      <div className="container mx-auto px-4 max-w-5xl py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          <aside className="flex flex-col gap-6">
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <Clock className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Response time</p>
-              <p className="text-sm text-zinc-400">Usually within 24 hours. DMCA requests handled within 48 hours.</p>
-            </div>
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <MapPin className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Based online</p>
-              <p className="text-sm text-zinc-400">We&apos;re fully remote, spread across multiple time zones.</p>
-            </div>
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <Mail className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Direct email</p>
-              <a href="mailto:madaraeyeinc@gmail.com" className="text-sm text-primary hover:underline underline-offset-4">
-                madaraeyeinc@gmail.com
-              </a>
-            </div>
-            <div className="mt-2">
-              <AdSlot />
-            </div>
-          </aside>
+        <AdSlot />
 
-          <div className="lg:col-span-2">
-            {submitted ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-20 bg-zinc-900/30 rounded-2xl border border-white/5">
-                <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                  <CheckCircle2 className="w-10 h-10 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-display font-bold text-white mb-2">Message sent!</h2>
-                  <p className="text-zinc-400 max-w-sm">
-                    Thanks for reaching out. We&apos;ll get back to you at{" "}
-                    <span className="text-white">{form.email}</span> soon.
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  className="rounded-full border-white/10 hover:bg-white/5 text-white"
-                  onClick={() => { setSubmitted(false); setForm({ name: "", email: "", subject: "", message: "" }); setFieldErrors({}); }}
-                >
-                  Send another message
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
-                <fieldset>
-                  <legend className="text-sm font-semibold text-zinc-300 mb-3">What&apos;s this about?</legend>
-                  <div className="grid grid-cols-2 gap-3" role="radiogroup">
-                    {CATEGORIES.map(c => {
-                      const Icon = c.icon;
-                      const active = category === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => setCategory(c.id)}
-                          className={`flex flex-col items-start gap-1 p-4 rounded-xl border text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
-                            active
-                              ? "bg-primary/10 border-primary/40 text-primary"
-                              : "bg-zinc-900/50 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white"
-                          }`}
-                        >
-                          <Icon className="w-4 h-4 mb-0.5" aria-hidden="true" />
-                          <span className="font-semibold text-sm">{c.label}</span>
-                          <span className={`text-xs ${active ? "text-primary/70" : "text-zinc-600"}`}>{c.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="name" className="text-sm font-semibold text-zinc-300">Your name</Label>
-                    <Input
-                      id="name" name="name"
-                      placeholder="e.g. Alex Kim"
-                      required autoComplete="name"
-                      value={form.name} onChange={handleChange}
-                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.name ? "border-red-500/60" : ""}`}
-                    />
-                    {fieldErrors.name && <p className="text-xs text-red-400">{fieldErrors.name}</p>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="email" className="text-sm font-semibold text-zinc-300">Email address</Label>
-                    <Input
-                      id="email" name="email" type="email"
-                      placeholder="you@example.com"
-                      required autoComplete="email"
-                      value={form.email} onChange={handleChange}
-                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.email ? "border-red-500/60" : ""}`}
-                    />
-                    {fieldErrors.email && <p className="text-xs text-red-400">{fieldErrors.email}</p>}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="subject" className="text-sm font-semibold text-zinc-300">Subject</Label>
-                  <Input
-                    id="subject" name="subject"
-                    placeholder="Brief description of your message"
-                    required
-                    value={form.subject} onChange={handleChange}
-                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.subject ? "border-red-500/60" : ""}`}
-                  />
-                  {fieldErrors.subject && <p className="text-xs text-red-400">{fieldErrors.subject}</p>}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="message" className="text-sm font-semibold text-zinc-300">
-                    Message <span className="text-zinc-500 font-normal">(min {MIN_MESSAGE} characters)</span>
-                  </Label>
-                  <Textarea
-                    id="message" name="message"
-                    placeholder={
-                      category === "dmca"        ? "Include the title name, URL, and your rights information…"
-                      : category === "bug"       ? "Describe what happened, what you expected, and your device/browser…"
-                      : category === "partnership" ? "Tell us about your company or project…"
-                      : "What's on your mind?"
-                    }
-                    required rows={6}
-                    value={form.message} onChange={handleChange}
-                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 resize-none ${fieldErrors.message ? "border-red-500/60" : ""}`}
-                  />
-                  <div className="flex justify-between text-xs">
-                    {fieldErrors.message ? (
-                      <p className="text-red-400">{fieldErrors.message}</p>
-                    ) : (
-                      <span className="text-zinc-600">{form.message.trim().length} / {MIN_MESSAGE} min</span>
-                    )}
-                  </div>
-                </div>
-
-                {error && (
-                  <div role="alert" className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-full font-bold py-6 text-base bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 transition-all"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
-                      Sending…
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <Send className="w-4 h-4" aria-hidden="true" /> Send Message
-                    </span>
+        <div className="flex flex-col gap-4">
+          {isLoading ? (
+            Array(5)
+              .fill(0)
+              .map((_, i) => (
+                <div key={i} className="h-32 bg-zinc-900 rounded-xl animate-pulse border border-white/5" />
+              ))
+          ) : data?.length ? (
+            data.map((entry) => {
+              const isSaved = saved.has(entry.id) || hasLocalReminder(entry.id);
+              return (
+                <div
+                  key={entry.id}
+                  className={cn(
+                    "relative overflow-hidden flex items-center gap-4 p-4 md:p-6 bg-zinc-900/80 hover:bg-zinc-800 transition-colors border rounded-xl group",
+                    entry.isUrgent
+                      ? "border-red-500/50 shadow-[0_0_30px_-10px_rgba(239,68,68,0.3)]"
+                      : "border-white/5"
                   )}
-                </Button>
+                >
+                  {entry.isUrgent && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-transparent pointer-events-none" />
+                  )}
 
-                <p className="text-center text-xs text-zinc-600">
-                  By submitting you agree to our{" "}
-                  <Link href="/about" className="text-zinc-400 hover:text-white underline underline-offset-4 transition-colors">
-                    Privacy Policy
+                  <Link href={`/title/${entry.type}/${entry.id}`} className="shrink-0">
+                    <div className="w-16 md:w-24 aspect-[2/3] rounded-md overflow-hidden bg-zinc-800 shadow-md">
+                      {entry.posterUrl ? (
+                        <img
+                          src={entry.posterUrl}
+                          alt={entry.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">
+                          No img
+                        </div>
+                      )}
+                    </div>
                   </Link>
-                  . We never share your data.
-                </p>
-              </form>
-            )}
-          </div>
+
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span
+                        className={cn(
+                          "text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded",
+                          entry.isUrgent ? "bg-red-500 text-white" : "bg-zinc-800 text-zinc-400"
+                        )}
+                      >
+                        {entry.type}
+                      </span>
+                      {entry.isUrgent && (
+                        <span className="text-xs text-red-500 font-bold animate-pulse">DROPS TOMORROW</span>
+                      )}
+                    </div>
+
+                    <Link href={`/title/${entry.type}/${entry.id}`}>
+                      <h3 className="text-lg md:text-2xl font-bold text-white line-clamp-1 group-hover:text-primary transition-colors cursor-pointer">
+                        {entry.title}
+                      </h3>
+                    </Link>
+
+                    <p className="text-sm text-zinc-500 line-clamp-1 mt-1">{entry.genres?.join(", ")}</p>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-3 shrink-0">
+                    <CountdownTimer
+                      releaseDate={entry.releaseDate}
+                      className="text-base md:text-lg lg:text-xl font-bold"
+                    />
+
+                    {/* Visible on ALL screen sizes (was hidden md:flex before) */}
+                    <Button
+                      size="sm"
+                      variant={isSaved ? "secondary" : "outline"}
+                      className={
+                        isSaved
+                          ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-600/30"
+                          : "border-white/10 hover:bg-white hover:text-black"
+                      }
+                      onClick={() => handleRemindMe(entry)}
+                      disabled={createReminder.isPending || isSaved}
+                    >
+                      {isSaved ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" /> Saved
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="w-4 h-4 mr-2" /> Remind Me
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-20 text-zinc-500">No upcoming drops found.</div>
+          )}
         </div>
       </div>
     </div>
