@@ -95,14 +95,14 @@ export function Calendar() {
           });
         },
         onError: (err: any) => {
-          // Local save already succeeded — don't scare the user
-          const msg =
-            err?.data?.error ||
-            err?.message ||
-            "Saved on this device. Cloud sync failed (check sign-in / database).";
+          const status = err?.status;
+          const raw = String(err?.data?.error || err?.message || "");
+          const isAuth = status === 401 || /unauthor/i.test(raw);
           toast({
-            title: "Reminder saved locally",
-            description: String(msg).slice(0, 160),
+            title: "Reminder saved in Alerts",
+            description: isAuth
+              ? "Kept on this device. Sign in anytime to sync across devices."
+              : (raw.slice(0, 140) || "Saved on this device."),
           });
         },
       }
