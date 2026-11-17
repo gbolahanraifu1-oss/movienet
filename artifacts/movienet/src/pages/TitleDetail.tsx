@@ -3,6 +3,7 @@ import { useParams } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Star, Clock, CalendarIcon, Download, Bell, Play, Zap, ListVideo } from "lucide-react";
 import { Link } from "wouter";
 import { ContentCard } from "../components/ContentCard";
@@ -15,17 +16,26 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
   const { toast } = useToast();
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   
-  // Conditionally fetch based on type
+  // Conditionally fetch based on type — series uses /api/series/:id (NOT anime)
   const { data: movieData, isLoading: movieLoading } = useGetMovie(id, { query: { enabled: type === 'movie', queryKey: getGetMovieQueryKey(id) } });
-  const isTv = type === 'anime' || type === 'series';
-  const { data: animeData, isLoading: animeLoading } = useGetAnime(id, { query: { enabled: isTv, queryKey: getGetAnimeQueryKey(id) } });
+  const { data: animeData, isLoading: animeLoading } = useGetAnime(id, { query: { enabled: type === 'anime', queryKey: getGetAnimeQueryKey(id) } });
+  const { data: seriesData, isLoading: seriesLoading } = useQuery({
+    queryKey: ["series", id],
+    enabled: type === "series",
+    queryFn: async () => {
+      const r = await fetch(`/api/series/${encodeURIComponent(id)}`);
+      if (!r.ok) throw new Error("Series not found");
+      return r.json();
+    },
+  });
 
   const createReminder = useCreateReminder();
 
-  const data = type === 'movie' ? movieData : animeData;
-  const isLoading = type === 'movie' ? movieLoading : animeLoading;
+  const data = type === "movie" ? movieData : type === "series" ? seriesData : animeData;
+  const isLoading =
+    type === "movie" ? movieLoading : type === "series" ? seriesLoading : animeLoading;
   // Scraper cluster: anime → anime, series → series, movie → movie
-  const scraperSource = type === 'anime' ? 'anime' : type === 'series' ? 'series' : 'movie';
+  const scraperSource = type === "anime" ? "anime" : type === "series" ? "series" : "movie";
 
   // Anime seasons (extra fields from API; typed loosely until schema regen)
   const seasons: Array<{
@@ -65,7 +75,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
     }
 
     const contentType =
-      data.type === "anime" || data.type === "series" ? "anime" : "movie";
+      data.type === "anime" ? "anime" : data.type === "series" ? "movie" : "movie"; // reminders schema: movie|anime
     const releaseDate =
       data.releaseDate ||
       new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
