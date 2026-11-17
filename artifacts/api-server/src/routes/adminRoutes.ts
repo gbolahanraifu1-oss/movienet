@@ -321,12 +321,18 @@ router.post("/admin/crawler/start", requireAdmin, async (req: any, res: any) => 
     const type = String(req.body?.type || "movie").toLowerCase(); // movie | tv | anime
     let pages = Number(req.body?.pages);
     if (!Number.isFinite(pages) || pages < 0) pages = 3;
+    let startPage = Number(req.body?.startPage ?? req.body?.start ?? 1);
+    if (!Number.isFinite(startPage) || startPage < 1) startPage = 1;
     const secret = vpsSecret();
     if (!secret) {
       res.status(500).json({ error: "API_SECRET / VPS_SECRET not configured on api-server" });
       return;
     }
-    const q = `/admin/crawl?secret=${encodeURIComponent(secret)}&type=${encodeURIComponent(type)}&pages=${encodeURIComponent(String(pages))}`;
+    const q =
+      `/admin/crawl?secret=${encodeURIComponent(secret)}` +
+      `&type=${encodeURIComponent(type)}` +
+      `&pages=${encodeURIComponent(String(pages))}` +
+      `&startPage=${encodeURIComponent(String(startPage))}`;
     const { ok, status, data } = await vpsFetch(q);
     res.status(ok ? 200 : status || 502).json(data || { error: "VPS error" });
   } catch (e: any) {
