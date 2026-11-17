@@ -55,22 +55,67 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
   }
 
   const handleRemindMe = () => {
-    createReminder.mutate({
-      data: {
-        contentId: data.id,
-        contentType: data.type,
-        contentTitle: data.title,
-        posterUrl: data.posterUrl,
-        releaseDate: data.releaseDate || new Date().toISOString()
+    if (!data?.id || !data?.title) {
+      toast({
+        title: "Can't set reminder",
+        description: "Missing title data.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const contentType =
+      data.type === "anime" || data.type === "series" ? "anime" : "movie";
+    const releaseDate =
+      data.releaseDate ||
+      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const payload = {
+      contentId: String(data.id),
+      contentType: contentType as "movie" | "anime",
+      contentTitle: data.title,
+      posterUrl: data.posterUrl || null,
+      releaseDate:
+        typeof releaseDate === "string"
+          ? releaseDate
+          : new Date(releaseDate).toISOString(),
+    };
+
+    // Local fallback so the action always succeeds on this device
+    try {
+      const key = "mn_reminders";
+      const prev = JSON.parse(localStorage.getItem(key) || "[]").filter(
+        (x: any) => x.contentId !== payload.contentId
+      );
+      localStorage.setItem(
+        key,
+        JSON.stringify([{ ...payload, at: Date.now() }, ...prev].slice(0, 80))
+      );
+    } catch {
+      /* ignore */
+    }
+
+    createReminder.mutate(
+      { data: payload },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Reminder Set!",
+            description: `We'll notify you when ${data.title} drops.`,
+          });
+        },
+        onError: (err: any) => {
+          const msg =
+            err?.data?.error ||
+            err?.message ||
+            "Saved on this device. Cloud sync may need sign-in or DB.";
+          toast({
+            title: "Reminder saved locally",
+            description: String(msg).slice(0, 160),
+          });
+        },
       }
-    }, {
-      onSuccess: () => {
-        toast({
-          title: "Reminder Set!",
-          description: `We'll notify you when ${data.title} drops.`,
-        });
-      }
-    });
+    );
   };
 
   return (
