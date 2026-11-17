@@ -99,6 +99,7 @@ export function UserDock() {
     setWatchlist(loadList(WL_KEY));
     setRecent(loadList(RECENT_KEY));
     if (tab === "notifications") {
+      // Site announcements
       fetch("/api/announcements")
         .then((r) => r.json())
         .then((data) => {
@@ -107,9 +108,39 @@ export function UserDock() {
             : Array.isArray(data?.announcements)
               ? data.announcements
               : [];
-          setAnnouncements(list.filter((a: any) => a?.active !== false));
+          const anns = list.filter((a: any) => a?.active !== false);
+          // Merge local movie/anime reminders so "Remind Me" results show up here
+          let locals: { id: number; title: string; body: string }[] = [];
+          try {
+            const raw = JSON.parse(localStorage.getItem("mn_reminders") || "[]");
+            locals = (Array.isArray(raw) ? raw : []).slice(0, 20).map((r: any, i: number) => ({
+              id: 900000 + i,
+              title: `Reminder: ${r.contentTitle || r.title || "Upcoming"}`,
+              body: r.releaseDate
+                ? `Drops around ${String(r.releaseDate).slice(0, 10)}`
+                : "Saved from Drop Calendar",
+            }));
+          } catch {
+            /* */
+          }
+          setAnnouncements([...anns, ...locals]);
         })
-        .catch(() => setAnnouncements([]));
+        .catch(() => {
+          try {
+            const raw = JSON.parse(localStorage.getItem("mn_reminders") || "[]");
+            setAnnouncements(
+              (Array.isArray(raw) ? raw : []).slice(0, 20).map((r: any, i: number) => ({
+                id: 900000 + i,
+                title: `Reminder: ${r.contentTitle || r.title || "Upcoming"}`,
+                body: r.releaseDate
+                  ? `Drops around ${String(r.releaseDate).slice(0, 10)}`
+                  : "Saved from Drop Calendar",
+              }))
+            );
+          } catch {
+            setAnnouncements([]);
+          }
+        });
     }
   }, [tab, loc]);
 
