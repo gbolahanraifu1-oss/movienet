@@ -63,17 +63,25 @@ function isDirectFile(url: string): boolean {
 }
 
 function buildPlayUrl(streamUrl: string, referer: string): { playUrl: string; type: string } {
+  // Direct MP4/MKV from gate hosts often have bad SSL / mixed content → always proxy via VPS
   if (isDirectFile(streamUrl)) {
-    return { playUrl: streamUrl, type: "video/mp4" };
+    const params = new URLSearchParams();
+    params.set("url", streamUrl);
+    params.set("filename", "stream.mp4");
+    params.set("stream", "1");
+    if (VPS_SECRET) params.set("secret", VPS_SECRET);
+    let playUrl = `${VPS_HTTPS}/proxy-download?${params.toString()}`;
+    playUrl = playUrl.replace(/^http:\/\//i, "https://");
+    return { playUrl, type: "video/mp4" };
   }
   const params = new URLSearchParams();
   params.set("url", streamUrl);
   params.set("referer", referer || "https://iptv-org.github.io/");
   if (VPS_SECRET) params.set("secret", VPS_SECRET);
-  
+
   let playUrl = `${VPS_HTTPS}/stream?${params.toString()}`;
   playUrl = playUrl.replace(/^http:\/\//i, "https://");
-  
+
   return { playUrl, type: "application/x-mpegURL" };
 }
 
@@ -144,7 +152,7 @@ export function WatchPage() {
         const searchTitle = title.replace(/\s*[—–-]\s*S\d+E\d+/i, "").trim() || title;
         q.set("q", searchTitle);
         q.set("source", scraperSource);
-        if (!isSignedIn) return;
+        if (isSignedIn !== true) return;
         q.set("mode", "stream");
         if (isAnime || isSeries || isSports) {
           q.set("episode", String(episode));
@@ -247,7 +255,7 @@ export function WatchPage() {
     );
   }
 
-  if (isLoaded && !isSignedIn) {
+  if (isLoaded && isSignedIn === false) {
     const next = encodeURIComponent(window.location.pathname + window.location.search);
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center px-6 text-center gap-4">
