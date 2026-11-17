@@ -39,7 +39,6 @@ const VPS_SECRET = String(
     "eYW2lW1n9HGgVGdB6LApVfaosFB9mxHm"
 ).trim();
 
-/** Build a same-origin-safe download URL that forces attachment (avoids blank gate pages). */
 function buildProxyDownloadUrl(directUrl: string, filename: string): string {
   const q = new URLSearchParams();
   q.set("url", directUrl);
@@ -64,7 +63,6 @@ function triggerDownload(url: string, filename: string) {
   a.href = url;
   a.download = filename;
   a.rel = "noopener";
-  // Prefer same-tab download for proxy (attachment header). Blank gate pages fail with _blank.
   a.target = "_self";
   document.body.appendChild(a);
   a.click();
@@ -111,6 +109,7 @@ export function DownloadPage() {
     setGate(guestCanDownload() ? "ok" : "need-auth");
   }, [isLoaded, isSignedIn]);
 
+  // 5s timer then fetch
   useEffect(() => {
     if (gate !== "ok" || status !== "countdown") return;
     if (seconds <= 0) {
@@ -170,21 +169,17 @@ export function DownloadPage() {
 
       if (data.title) setResolvedTitle(String(data.title));
       const direct = String(downloadUrl);
-      const fname = safeFilename(
-        String(data.title || cleanTitle),
-        season,
-        episode || ""
-      );
+      const fname = safeFilename(String(data.title || cleanTitle), season, episode || "");
+      const proxied = buildProxyDownloadUrl(direct, fname);
       setFinalUrl(direct);
-      setProxyUrl(buildProxyDownloadUrl(direct, fname));
+      setProxyUrl(proxied);
       if (!isSignedIn) recordGuestDownload();
       setStatus("done");
 
-      // Auto-start via PROXY (attachment) — not the blank gate page
       try {
-        triggerDownload(buildProxyDownloadUrl(direct, fname), fname);
+        triggerDownload(proxied, fname);
       } catch {
-        /* user can click button */
+        /* user can tap button */
       }
     } catch {
       setStatus("error");
@@ -207,7 +202,6 @@ export function DownloadPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = finalUrl;
       document.body.appendChild(ta);
@@ -274,34 +268,34 @@ export function DownloadPage() {
 
           <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-8">
             <div className="flex flex-col items-center gap-4">
+              {/* 5s countdown */}
               {status === "countdown" && (
                 <>
                   <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                    <span className="text-2xl font-bold text-primary">{seconds}</span>
+                    <span className="text-3xl font-bold text-primary tabular-nums">{seconds}</span>
                   </div>
-                  <p className="text-white font-semibold">Preparing download</p>
-                  <p className="text-zinc-500 text-sm">Starting in {seconds}s…</p>
+                  <p className="text-white font-semibold text-lg">Get ready</p>
+                  <p className="text-zinc-500 text-sm">Download starts in {seconds}s…</p>
                 </>
               )}
+
+              {/* same style as before — spinning ring, not "Fetching link" text */}
               {status === "preparing" && (
                 <>
                   <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
                     <span className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                   </div>
-                  <p className="text-white font-semibold">Fetching link…</p>
+                  <p className="text-white font-semibold text-lg">Downloading</p>
                   <p className="text-zinc-500 text-sm">{elapsed}s</p>
                 </>
               )}
+
               {status === "done" && (
                 <>
                   <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
                     <CheckCircle2 className="w-10 h-10 text-primary" />
                   </div>
                   <p className="text-white font-semibold text-lg">Ready</p>
-                  <p className="text-zinc-500 text-xs text-center max-w-xs">
-                    If the file didn&apos;t start, tap the button below. We stream through our server so
-                    blank ad pages can&apos;t interrupt.
-                  </p>
                   <button
                     type="button"
                     onClick={handleOpenDownload}
@@ -314,11 +308,16 @@ export function DownloadPage() {
                     onClick={handleCopy}
                     className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
                     {copied ? "Link copied" : "Copy direct link"}
                   </button>
                 </>
               )}
+
               {status === "error" && (
                 <>
                   <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
