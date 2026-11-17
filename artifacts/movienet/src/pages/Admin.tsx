@@ -87,6 +87,7 @@ export function Admin() {
   const [err, setErr] = useState<string | null>(null);
   const [crawl, setCrawl] = useState<CrawlerStatus | null>(null);
   const [pages, setPages] = useState(3);
+  const [startPage, setStartPage] = useState(1);
   const [busy, setBusy] = useState(false);
 
   const loadMe = useCallback(async () => {
@@ -126,6 +127,12 @@ export function Admin() {
     try {
       const d = await api("/api/admin/crawler/status");
       setCrawl(d);
+      const lp = d?.crawler?.lastProgress || d?.lastProgress;
+      if (lp?.page && Number(lp.page) > 0) {
+        // suggest resume: next page after last saved
+        const suggest = Math.max(1, Number(lp.page));
+        setStartPage((prev) => (prev === 1 ? suggest : prev));
+      }
     } catch (e: any) {
       setErr(e.message);
     }
@@ -190,7 +197,11 @@ export function Admin() {
     try {
       await api("/api/admin/crawler/start", {
         method: "POST",
-        body: JSON.stringify({ type, pages: Number(pages) }),
+        body: JSON.stringify({
+          type,
+          pages: Number(pages),
+          startPage: Math.max(1, Number(startPage) || 1),
+        }),
       });
       await loadCrawl();
     } catch (e: any) {
@@ -321,6 +332,17 @@ export function Admin() {
                   title="0 or 500 = deep crawl"
                 />
                 <span className="text-[10px] text-zinc-500">0 = max depth</span>
+                <label className="text-xs text-zinc-400 ml-2">Jump to page</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={startPage}
+                  onChange={(e) => setStartPage(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-20 rounded-lg bg-zinc-950 border border-violet-500/40 px-2 py-1.5 text-sm"
+                  title="Start from this TMDB page (e.g. 200 after reboot)"
+                />
+                <span className="text-[10px] text-violet-400/80">resume here</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -348,6 +370,18 @@ export function Admin() {
               </button>
             </div>
 
+            {(c?.lastProgress?.page || crawl?.crawler?.lastProgress?.page) && (
+              <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200">
+                Last saved progress:{" "}
+                <strong>
+                  page {c?.lastProgress?.page ?? crawl?.crawler?.lastProgress?.page}
+                  {c?.lastProgress?.type || crawl?.crawler?.lastProgress?.type
+                    ? ` (${c?.lastProgress?.type ?? crawl?.crawler?.lastProgress?.type})`
+                    : ""}
+                </strong>
+                {" — "}set Jump to page and Start to resume after reboot.
+              </div>
+            )}
             <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
               <Stat label="Status" value={running ? "RUNNING" : "Idle"} hot={running} />
               <Stat label="Type" value={c?.type || "—"} />
