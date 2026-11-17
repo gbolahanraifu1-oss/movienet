@@ -16,21 +16,53 @@ const CATEGORIES: { id: Category; icon: typeof Mail; label: string; desc: string
   { id: "partnership", icon: Mail,          label: "Partnership",       desc: "Ads, collabs, business enquiries" },
 ];
 
+const MIN_MESSAGE = 3;
+
 export function Contact() {
   const [category, setCategory] = useState<Category>("general");
   const [form, setForm]         = useState({ name: "", email: "", subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+    setFieldErrors(fe => {
+      const next = { ...fe };
+      delete next[e.target.name];
+      return next;
+    });
+  }
+
+  function clientValidate(): string | null {
+    const fe: Record<string, string> = {};
+    if (!form.name.trim()) fe.name = "Name is required";
+    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      fe.email = "Enter a valid email";
+    }
+    if (!form.subject.trim()) fe.subject = "Subject is required";
+    if (form.message.trim().length < MIN_MESSAGE) {
+      fe.message = `Message must be at least ${MIN_MESSAGE} characters (you wrote ${form.message.trim().length})`;
+    }
+    setFieldErrors(fe);
+    if (Object.keys(fe).length) {
+      return Object.values(fe).join(" · ");
+    }
+    return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    const clientErr = clientValidate();
+    if (clientErr) {
+      setError(clientErr);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/contact", {
@@ -39,9 +71,26 @@ export function Contact() {
         body: JSON.stringify({ ...form, category }),
       });
 
+      const body = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? `Server error ${res.status}`);
+        // Prefer human message; fall back to fieldErrors from zod
+        let msg = body?.error;
+        if (body?.fieldErrors && typeof body.fieldErrors === "object") {
+          const parts: string[] = [];
+          for (const [k, v] of Object.entries(body.fieldErrors)) {
+            if (Array.isArray(v) && v.length) parts.push(`${k}: ${v.join(", ")}`);
+          }
+          if (parts.length) {
+            msg = parts.join(" · ");
+            const fe: Record<string, string> = {};
+            for (const [k, v] of Object.entries(body.fieldErrors)) {
+              if (Array.isArray(v) && v[0]) fe[k] = String(v[0]);
+            }
+            setFieldErrors(fe);
+          }
+        }
+        throw new Error(msg || `Server error ${res.status}`);
       }
 
       setSubmitted(true);
@@ -54,7 +103,6 @@ export function Contact() {
 
   return (
     <div className="min-h-[100dvh] bg-background">
-      {/* Hero */}
       <section className="relative overflow-hidden border-b border-white/5 pt-28 pb-16">
         <div className="pointer-events-none absolute -top-40 right-1/4 w-[500px] h-[500px] rounded-full bg-primary/8 blur-[120px]" />
         <div className="container mx-auto px-4 max-w-5xl relative z-10">
@@ -66,15 +114,13 @@ export function Contact() {
           </div>
           <h1 className="text-4xl md:text-5xl font-display font-black text-white mb-4">Get in touch</h1>
           <p className="text-zinc-400 text-lg max-w-xl">
-            We're a small team and we actually read everything. Drop us a message — we usually reply within 24 hours.
+            We&apos;re a small team and we actually read everything. Drop us a message — we usually reply within 24 hours.
           </p>
         </div>
       </section>
 
       <div className="container mx-auto px-4 max-w-5xl py-16">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-
-          {/* Sidebar */}
           <aside className="flex flex-col gap-6">
             <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
               <Clock className="w-5 h-5 text-primary mb-3" />
@@ -84,12 +130,12 @@ export function Contact() {
             <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
               <MapPin className="w-5 h-5 text-primary mb-3" />
               <p className="font-semibold text-white mb-1">Based online</p>
-              <p className="text-sm text-zinc-400">We're fully remote, spread across multiple time zones.</p>
+              <p className="text-sm text-zinc-400">We&apos;re fully remote, spread across multiple time zones.</p>
             </div>
             <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
               <Mail className="w-5 h-5 text-primary mb-3" />
               <p className="font-semibold text-white mb-1">Direct email</p>
-              <a href="mailto: madaraeyeinc@gmail.com" className="text-sm text-primary hover:underline underline-offset-4">
+              <a href="mailto:madaraeyeinc@gmail.com" className="text-sm text-primary hover:underline underline-offset-4">
                 madaraeyeinc@gmail.com
               </a>
             </div>
@@ -98,7 +144,6 @@ export function Contact() {
             </div>
           </aside>
 
-          {/* Form */}
           <div className="lg:col-span-2">
             {submitted ? (
               <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-20 bg-zinc-900/30 rounded-2xl border border-white/5">
@@ -108,24 +153,22 @@ export function Contact() {
                 <div>
                   <h2 className="text-2xl font-display font-bold text-white mb-2">Message sent!</h2>
                   <p className="text-zinc-400 max-w-sm">
-                    Thanks for reaching out. We'll get back to you at{" "}
+                    Thanks for reaching out. We&apos;ll get back to you at{" "}
                     <span className="text-white">{form.email}</span> soon.
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   className="rounded-full border-white/10 hover:bg-white/5 text-white"
-                  onClick={() => { setSubmitted(false); setForm({ name: "", email: "", subject: "", message: "" }); }}
+                  onClick={() => { setSubmitted(false); setForm({ name: "", email: "", subject: "", message: "" }); setFieldErrors({}); }}
                 >
                   Send another message
                 </Button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
-
-                {/* Category selector */}
                 <fieldset>
-                  <legend className="text-sm font-semibold text-zinc-300 mb-3">What's this about?</legend>
+                  <legend className="text-sm font-semibold text-zinc-300 mb-3">What&apos;s this about?</legend>
                   <div className="grid grid-cols-2 gap-3" role="radiogroup">
                     {CATEGORIES.map(c => {
                       const Icon = c.icon;
@@ -152,7 +195,6 @@ export function Contact() {
                   </div>
                 </fieldset>
 
-                {/* Name + Email */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="name" className="text-sm font-semibold text-zinc-300">Your name</Label>
@@ -161,8 +203,9 @@ export function Contact() {
                       placeholder="e.g. Alex Kim"
                       required autoComplete="name"
                       value={form.name} onChange={handleChange}
-                      className="bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600"
+                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.name ? "border-red-500/60" : ""}`}
                     />
+                    {fieldErrors.name && <p className="text-xs text-red-400">{fieldErrors.name}</p>}
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="email" className="text-sm font-semibold text-zinc-300">Email address</Label>
@@ -171,12 +214,12 @@ export function Contact() {
                       placeholder="you@example.com"
                       required autoComplete="email"
                       value={form.email} onChange={handleChange}
-                      className="bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600"
+                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.email ? "border-red-500/60" : ""}`}
                     />
+                    {fieldErrors.email && <p className="text-xs text-red-400">{fieldErrors.email}</p>}
                   </div>
                 </div>
 
-                {/* Subject */}
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="subject" className="text-sm font-semibold text-zinc-300">Subject</Label>
                   <Input
@@ -184,13 +227,15 @@ export function Contact() {
                     placeholder="Brief description of your message"
                     required
                     value={form.subject} onChange={handleChange}
-                    className="bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600"
+                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.subject ? "border-red-500/60" : ""}`}
                   />
+                  {fieldErrors.subject && <p className="text-xs text-red-400">{fieldErrors.subject}</p>}
                 </div>
 
-                {/* Message */}
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="message" className="text-sm font-semibold text-zinc-300">Message</Label>
+                  <Label htmlFor="message" className="text-sm font-semibold text-zinc-300">
+                    Message <span className="text-zinc-500 font-normal">(min {MIN_MESSAGE} characters)</span>
+                  </Label>
                   <Textarea
                     id="message" name="message"
                     placeholder={
@@ -201,14 +246,21 @@ export function Contact() {
                     }
                     required rows={6}
                     value={form.message} onChange={handleChange}
-                    className="bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 resize-none"
+                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 resize-none ${fieldErrors.message ? "border-red-500/60" : ""}`}
                   />
+                  <div className="flex justify-between text-xs">
+                    {fieldErrors.message ? (
+                      <p className="text-red-400">{fieldErrors.message}</p>
+                    ) : (
+                      <span className="text-zinc-600">{form.message.trim().length} / {MIN_MESSAGE} min</span>
+                    )}
+                  </div>
                 </div>
 
                 {error && (
-                  <div role="alert" className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {error}
+                  <div role="alert" className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{error}</span>
                   </div>
                 )}
 
