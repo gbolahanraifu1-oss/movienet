@@ -332,17 +332,18 @@ export function Admin() {
                   title="0 or 500 = deep crawl"
                 />
                 <span className="text-[10px] text-zinc-500">0 = max depth</span>
-                <label className="text-xs text-zinc-400 ml-2">Jump to page</label>
+                <label className="text-xs text-zinc-400 w-full sm:w-auto">Start from page #</label>
                 <input
                   type="number"
                   min={1}
                   max={500}
                   value={startPage}
                   onChange={(e) => setStartPage(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-20 rounded-lg bg-zinc-950 border border-violet-500/40 px-2 py-1.5 text-sm"
-                  title="Start from this TMDB page (e.g. 200 after reboot)"
+                  placeholder="e.g. 200"
+                  className="w-24 rounded-lg bg-zinc-950 border border-violet-500/50 px-2 py-1.5 text-sm text-violet-200"
+                  title="Enter TMDB page to resume from after reboot (1–500)"
                 />
-                <span className="text-[10px] text-violet-400/80">resume here</span>
+                <span className="text-[10px] text-violet-400/80">type page number then Start</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
