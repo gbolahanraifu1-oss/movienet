@@ -36,6 +36,7 @@ export function TitleDetail({ type, id }: { type: 'movie' | 'anime' | 'series', 
     type === "movie" ? movieLoading : type === "series" ? seriesLoading : animeLoading;
   // Scraper cluster: anime → anime, series → series, movie → movie
   const scraperSource = type === "anime" ? "anime" : type === "series" ? "series" : "movie";
+  const isTv = type === "anime" || type === "series";
 
   // Anime seasons (extra fields from API; typed loosely until schema regen)
   const seasons: Array<{
