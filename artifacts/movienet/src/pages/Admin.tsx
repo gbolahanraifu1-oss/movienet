@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AdminSupport } from "../component/AdminSupport";
+import { AdminSupport } from "../components/AdminSupport";
 import { useAuth } from "@clerk/react";
 import {
   Megaphone,
