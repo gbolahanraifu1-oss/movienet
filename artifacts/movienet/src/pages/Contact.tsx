@@ -1,298 +1,278 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AdSlot } from "../components/AdSlot";
-import { Mail, MessageSquare, Bug, Megaphone, Send, CheckCircle2, MapPin, Clock, AlertCircle } from "lucide-react";
+import {
+  Mail, MessageSquare, Bug, Megaphone, Send, CheckCircle2,
+  Lock, Plus, ArrowLeft, Headphones,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Link } from "wouter";
 
 type Category = "general" | "dmca" | "bug" | "partnership";
 
 const CATEGORIES: { id: Category; icon: typeof Mail; label: string; desc: string }[] = [
-  { id: "general",     icon: MessageSquare, label: "General Inquiry",   desc: "Questions, feedback, anything else" },
-  { id: "dmca",        icon: Megaphone,     label: "DMCA / Copyright",  desc: "Report infringing content" },
-  { id: "bug",         icon: Bug,           label: "Bug Report",        desc: "Something broken? Tell us" },
-  { id: "partnership", icon: Mail,          label: "Partnership",       desc: "Ads, collabs, business enquiries" },
+  { id: "general", icon: MessageSquare, label: "General", desc: "Questions & feedback" },
+  { id: "dmca", icon: Megaphone, label: "DMCA", desc: "Copyright report" },
+  { id: "bug", icon: Bug, label: "Bug", desc: "Something broken" },
+  { id: "partnership", icon: Mail, label: "Business", desc: "Ads & collabs" },
 ];
 
-const MIN_MESSAGE = 3;
+const SUPPORT_EMAIL = "madaraeyeinc@gmail.com";
+const LS_KEY = "mn_support_ticket";
+
+type Msg = { id: number; sender: string; body: string; createdAt: string };
 
 export function Contact() {
+  const [view, setView] = useState<"home" | "new" | "chat">("home");
   const [category, setCategory] = useState<Category>("general");
-  const [form, setForm]         = useState({ name: "", email: "", subject: "", message: "" });
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ticketId, setTicketId] = useState<string | null>(null);
+  const [ticketMeta, setTicketMeta] = useState<{
+    subject: string;
+    status: string;
+    locked: boolean;
+  } | null>(null);
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [reply, setReply] = useState("");
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }));
-    setFieldErrors(fe => {
-      const next = { ...fe };
-      delete next[e.target.name];
-      return next;
-    });
+  // Resume open ticket from localStorage
+  useEffect(() => {
+    try {
+      const id = localStorage.getItem(LS_KEY);
+      if (id) {
+        setTicketId(id);
+        loadTicket(id);
+        setView("chat");
+      }
+    } catch {}
+  }, []);
+
+  async function loadTicket(id: string) {
+    try {
+      const r = await fetch(`/api/support/tickets/${encodeURIComponent(id)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Not found");
+      setTicketMeta({
+        subject: d.ticket.subject,
+        status: d.ticket.status,
+        locked: !!d.ticket.locked,
+      });
+      setMessages(d.messages || []);
+    } catch (e: any) {
+      localStorage.removeItem(LS_KEY);
+      setTicketId(null);
+      setView("home");
+    }
   }
 
-  function clientValidate(): string | null {
-    const fe: Record<string, string> = {};
-    if (!form.name.trim()) fe.name = "Name is required";
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      fe.email = "Enter a valid email";
-    }
-    if (!form.subject.trim()) fe.subject = "Subject is required";
-    if (form.message.trim().length < MIN_MESSAGE) {
-      fe.message = `Message must be at least ${MIN_MESSAGE} characters (you wrote ${form.message.trim().length})`;
-    }
-    setFieldErrors(fe);
-    if (Object.keys(fe).length) {
-      return Object.values(fe).join(" · ");
-    }
-    return null;
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function openTicket(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
-
-    const clientErr = clientValidate();
-    if (clientErr) {
-      setError(clientErr);
-      setLoading(false);
+    if (!form.name.trim() || !form.email.trim() || !form.subject.trim() || form.message.trim().length < 3) {
+      setError("Fill all fields (message at least 3 characters).");
       return;
     }
-
+    setLoading(true);
     try {
-      const res = await fetch("/api/contact", {
+      const r = await fetch("/api/support/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, category }),
       });
-
-      const body = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // Prefer human message; fall back to fieldErrors from zod
-        let msg = body?.error;
-        if (body?.fieldErrors && typeof body.fieldErrors === "object") {
-          const parts: string[] = [];
-          for (const [k, v] of Object.entries(body.fieldErrors)) {
-            if (Array.isArray(v) && v.length) parts.push(`${k}: ${v.join(", ")}`);
-          }
-          if (parts.length) {
-            msg = parts.join(" · ");
-            const fe: Record<string, string> = {};
-            for (const [k, v] of Object.entries(body.fieldErrors)) {
-              if (Array.isArray(v) && v[0]) fe[k] = String(v[0]);
-            }
-            setFieldErrors(fe);
-          }
-        }
-        throw new Error(msg || `Server error ${res.status}`);
-      }
-
-      setSubmitted(true);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Could not open chat");
+      const id = d.ticket.id;
+      localStorage.setItem(LS_KEY, id);
+      setTicketId(id);
+      setForm({ name: "", email: "", subject: "", message: "" });
+      await loadTicket(id);
+      setView("chat");
     } catch (err: any) {
-      setError(err?.message ?? "Something went wrong. Please try again.");
+      setError(err.message || "Failed");
     } finally {
       setLoading(false);
     }
   }
 
+  async function sendReply(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ticketId || !reply.trim() || ticketMeta?.locked) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/support/tickets/${encodeURIComponent(ticketId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: reply.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Send failed");
+      setReply("");
+      await loadTicket(ticketId);
+    } catch (err: any) {
+      setError(err.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startNew() {
+    localStorage.removeItem(LS_KEY);
+    setTicketId(null);
+    setMessages([]);
+    setTicketMeta(null);
+    setView("new");
+  }
+
   return (
-    <div className="min-h-[100dvh] bg-background">
-      <section className="relative overflow-hidden border-b border-white/5 pt-28 pb-16">
-        <div className="pointer-events-none absolute -top-40 right-1/4 w-[500px] h-[500px] rounded-full bg-primary/8 blur-[120px]" />
-        <div className="container mx-auto px-4 max-w-5xl relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-primary" />
-            </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Contact</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-display font-black text-white mb-4">Get in touch</h1>
-          <p className="text-zinc-400 text-lg max-w-xl">
-            We&apos;re a small team and we actually read everything. Drop us a message — we usually reply within 24 hours.
-          </p>
+    <div className="container mx-auto px-4 py-10 max-w-2xl">
+      <div className="mb-8">
+        <h1 className="text-3xl font-display font-bold text-white flex items-center gap-3">
+          <Headphones className="w-8 h-8 text-primary" />
+          Support
+        </h1>
+        <p className="text-zinc-400 mt-2 text-sm">
+          Chat with us — messages stay until we reply. Locked chats need a new ticket.
+        </p>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}?subject=MovieNet%20Support`}
+          className="inline-flex items-center gap-2 mt-3 text-sm text-violet-400 hover:text-violet-300"
+        >
+          <Mail className="w-4 h-4" />
+          Or email {SUPPORT_EMAIL}
+        </a>
+      </div>
+
+      <AdSlot />
+
+      {view === "home" && (
+        <div className="space-y-4 mt-6">
+          <Button onClick={() => setView("new")} className="w-full h-12 text-base gap-2">
+            <Plus className="w-5 h-5" /> Open a support chat
+          </Button>
+          {ticketId && (
+            <Button variant="outline" onClick={() => { setView("chat"); loadTicket(ticketId); }} className="w-full">
+              Resume current chat
+            </Button>
+          )}
         </div>
-      </section>
+      )}
 
-      <div className="container mx-auto px-4 max-w-5xl py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          <aside className="flex flex-col gap-6">
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <Clock className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Response time</p>
-              <p className="text-sm text-zinc-400">Usually within 24 hours. DMCA requests handled within 48 hours.</p>
+      {view === "new" && (
+        <form onSubmit={openTicket} className="mt-6 space-y-5 rounded-2xl border border-white/10 bg-zinc-900/60 p-5">
+          <button type="button" onClick={() => setView("home")} className="text-xs text-zinc-500 flex items-center gap-1">
+            <ArrowLeft className="w-3 h-3" /> Back
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategory(c.id)}
+                className={`rounded-xl border p-3 text-left text-sm transition-colors ${
+                  category === c.id
+                    ? "border-violet-500 bg-violet-500/15 text-white"
+                    : "border-white/10 text-zinc-400 hover:border-white/20"
+                }`}
+              >
+                <c.icon className="w-4 h-4 mb-1" />
+                <div className="font-semibold">{c.label}</div>
+                <div className="text-[10px] opacity-70">{c.desc}</div>
+              </button>
+            ))}
+          </div>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input name="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-zinc-950" />
             </div>
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <MapPin className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Based online</p>
-              <p className="text-sm text-zinc-400">We&apos;re fully remote, spread across multiple time zones.</p>
+            <div>
+              <Label>Email</Label>
+              <Input name="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-zinc-950" />
             </div>
-            <div className="p-5 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <Mail className="w-5 h-5 text-primary mb-3" />
-              <p className="font-semibold text-white mb-1">Direct email</p>
-              <a href="mailto:madaraeyeinc@gmail.com" className="text-sm text-primary hover:underline underline-offset-4">
-                madaraeyeinc@gmail.com
-              </a>
+            <div>
+              <Label>Subject</Label>
+              <Input name="subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="bg-zinc-950" />
             </div>
-            <div className="mt-2">
-              <AdSlot />
+            <div>
+              <Label>Message</Label>
+              <Textarea name="message" rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-zinc-950" />
             </div>
-          </aside>
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <Button type="submit" disabled={loading} className="w-full gap-2">
+            <Send className="w-4 h-4" /> {loading ? "Opening…" : "Start chat"}
+          </Button>
+        </form>
+      )}
 
-          <div className="lg:col-span-2">
-            {submitted ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-20 bg-zinc-900/30 rounded-2xl border border-white/5">
-                <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                  <CheckCircle2 className="w-10 h-10 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-display font-bold text-white mb-2">Message sent!</h2>
-                  <p className="text-zinc-400 max-w-sm">
-                    Thanks for reaching out. We&apos;ll get back to you at{" "}
-                    <span className="text-white">{form.email}</span> soon.
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  className="rounded-full border-white/10 hover:bg-white/5 text-white"
-                  onClick={() => { setSubmitted(false); setForm({ name: "", email: "", subject: "", message: "" }); setFieldErrors({}); }}
-                >
-                  Send another message
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
-                <fieldset>
-                  <legend className="text-sm font-semibold text-zinc-300 mb-3">What&apos;s this about?</legend>
-                  <div className="grid grid-cols-2 gap-3" role="radiogroup">
-                    {CATEGORIES.map(c => {
-                      const Icon = c.icon;
-                      const active = category === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => setCategory(c.id)}
-                          className={`flex flex-col items-start gap-1 p-4 rounded-xl border text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
-                            active
-                              ? "bg-primary/10 border-primary/40 text-primary"
-                              : "bg-zinc-900/50 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white"
-                          }`}
-                        >
-                          <Icon className="w-4 h-4 mb-0.5" aria-hidden="true" />
-                          <span className="font-semibold text-sm">{c.label}</span>
-                          <span className={`text-xs ${active ? "text-primary/70" : "text-zinc-600"}`}>{c.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="name" className="text-sm font-semibold text-zinc-300">Your name</Label>
-                    <Input
-                      id="name" name="name"
-                      placeholder="e.g. Alex Kim"
-                      required autoComplete="name"
-                      value={form.name} onChange={handleChange}
-                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.name ? "border-red-500/60" : ""}`}
-                    />
-                    {fieldErrors.name && <p className="text-xs text-red-400">{fieldErrors.name}</p>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="email" className="text-sm font-semibold text-zinc-300">Email address</Label>
-                    <Input
-                      id="email" name="email" type="email"
-                      placeholder="you@example.com"
-                      required autoComplete="email"
-                      value={form.email} onChange={handleChange}
-                      className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.email ? "border-red-500/60" : ""}`}
-                    />
-                    {fieldErrors.email && <p className="text-xs text-red-400">{fieldErrors.email}</p>}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="subject" className="text-sm font-semibold text-zinc-300">Subject</Label>
-                  <Input
-                    id="subject" name="subject"
-                    placeholder="Brief description of your message"
-                    required
-                    value={form.subject} onChange={handleChange}
-                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 ${fieldErrors.subject ? "border-red-500/60" : ""}`}
-                  />
-                  {fieldErrors.subject && <p className="text-xs text-red-400">{fieldErrors.subject}</p>}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="message" className="text-sm font-semibold text-zinc-300">
-                    Message <span className="text-zinc-500 font-normal">(min {MIN_MESSAGE} characters)</span>
-                  </Label>
-                  <Textarea
-                    id="message" name="message"
-                    placeholder={
-                      category === "dmca"        ? "Include the title name, URL, and your rights information…"
-                      : category === "bug"       ? "Describe what happened, what you expected, and your device/browser…"
-                      : category === "partnership" ? "Tell us about your company or project…"
-                      : "What's on your mind?"
-                    }
-                    required rows={6}
-                    value={form.message} onChange={handleChange}
-                    className={`bg-zinc-900/60 border-white/8 focus-visible:ring-primary/50 placeholder:text-zinc-600 resize-none ${fieldErrors.message ? "border-red-500/60" : ""}`}
-                  />
-                  <div className="flex justify-between text-xs">
-                    {fieldErrors.message ? (
-                      <p className="text-red-400">{fieldErrors.message}</p>
-                    ) : (
-                      <span className="text-zinc-600">{form.message.trim().length} / {MIN_MESSAGE} min</span>
-                    )}
-                  </div>
-                </div>
-
-                {error && (
-                  <div role="alert" className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>{error}</span>
-                  </div>
+      {view === "chat" && ticketId && (
+        <div className="mt-6 rounded-2xl border border-white/10 bg-zinc-900/60 overflow-hidden flex flex-col min-h-[420px]">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-semibold text-white truncate">{ticketMeta?.subject || "Support chat"}</p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                {ticketMeta?.locked ? (
+                  <span className="text-amber-400 inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Locked — open a new chat for new issues</span>
+                ) : (
+                  <span className="text-emerald-400">Open</span>
                 )}
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={startNew}>
+              New chat
+            </Button>
+          </div>
 
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-full font-bold py-6 text-base bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-60 transition-all"
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[360px]">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
+                    m.sender === "user"
+                      ? "bg-violet-600 text-white"
+                      : "bg-zinc-800 text-zinc-100 border border-white/10"
+                  }`}
                 >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
-                      Sending…
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <Send className="w-4 h-4" aria-hidden="true" /> Send Message
-                    </span>
+                  {m.sender === "admin" && (
+                    <p className="text-[10px] text-violet-300 mb-0.5 font-semibold">Support</p>
                   )}
-                </Button>
-
-                <p className="text-center text-xs text-zinc-600">
-                  By submitting you agree to our{" "}
-                  <Link href="/about" className="text-zinc-400 hover:text-white underline underline-offset-4 transition-colors">
-                    Privacy Policy
-                  </Link>
-                  . We never share your data.
-                </p>
-              </form>
+                  {m.body}
+                </div>
+              </div>
+            ))}
+            {!messages.length && (
+              <p className="text-center text-zinc-500 text-sm py-8">No messages yet.</p>
             )}
           </div>
+
+          {ticketMeta?.locked ? (
+            <div className="p-4 border-t border-white/10 text-center text-sm text-zinc-400">
+              <CheckCircle2 className="w-5 h-5 mx-auto mb-1 text-emerald-400" />
+              Chat closed by support. Start a <button type="button" className="text-violet-400 underline" onClick={startNew}>new chat</button> if you need help again.
+            </div>
+          ) : (
+            <form onSubmit={sendReply} className="p-3 border-t border-white/10 flex gap-2">
+              <Input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder="Type a reply…"
+                className="bg-zinc-950 flex-1"
+              />
+              <Button type="submit" disabled={loading || !reply.trim()} size="icon">
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
+          )}
+          {error && <p className="px-4 pb-2 text-xs text-red-400">{error}</p>}
         </div>
-      </div>
+      )}
     </div>
   );
 }
