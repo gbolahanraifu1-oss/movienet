@@ -10,6 +10,7 @@ import searchRouter from "./search.js";
 import sportsRouter from "./sports.js";
 import trendingRouter from "./trending.js";
 import adminRouter from "./adminRoutes.js";
+import supportRouter from "./support.js";
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use(searchRouter);
 router.use(sportsRouter);
 router.use(trendingRouter);
 router.use(adminRouter);
+router.use(supportRouter);
 
 export default router;
