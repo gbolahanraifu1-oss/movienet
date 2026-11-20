@@ -17,9 +17,22 @@ async function getPool() {
   if (pool) return pool;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL missing — support chat needs Postgres");
-  const pg = await import("pg");
-  pool = new pg.default.Pool({ connectionString: url, ssl: url.includes("localhost") ? false : { rejectUnauthorized: false } });
-  return pool;
+  try {
+    // Same pattern as adminRoutes — avoid TS2307 on missing @types/pg
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Pool } = require("pg") as { Pool: new (c: object) => any };
+    pool = new Pool({
+      connectionString: url,
+      ssl: url.includes("localhost") ? false : { rejectUnauthorized: false },
+    });
+    return pool;
+  } catch (e: any) {
+    throw new Error(
+      e?.message?.includes("Cannot find module")
+        ? "Install pg: pnpm add pg -F @workspace/api-server"
+        : e?.message || "pg failed"
+    );
+  }
 }
 
 async function ensureTables() {
