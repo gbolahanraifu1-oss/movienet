@@ -23,9 +23,18 @@ export function AnnouncementBanner() {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    fetch("/api/announcements")
+    try {
+      const raw = sessionStorage.getItem("mn_ann_dismissed");
+      if (raw) setDismissed(new Set(JSON.parse(raw).map(Number)));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/announcements", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled) return;
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.announcements)
@@ -34,14 +43,19 @@ export function AnnouncementBanner() {
         setItems(list.filter((a: Item) => a && a.id != null && a.active !== false));
       })
       .catch(() => {});
-  }, [loc]);
-
-  useEffect(() => {
-    if (loc === "/" || loc === "") setDismissed(new Set());
+    return () => {
+      cancelled = true;
+    };
   }, [loc]);
 
   function dismiss(id: number) {
-    setDismissed((prev) => new Set(prev).add(id));
+    setDismissed((prev) => {
+      const next = new Set(prev).add(id);
+      try {
+        sessionStorage.setItem("mn_ann_dismissed", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
   }
 
   const visible = items.filter((i) => !dismissed.has(i.id));
