@@ -7,6 +7,9 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { z } from "zod";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const router = Router();
 
@@ -18,20 +21,22 @@ async function getPool() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL missing — support chat needs Postgres");
   try {
-    // Same pattern as adminRoutes — avoid TS2307 on missing @types/pg
+    // ESM-safe require (Node "type":"module" has no global require)
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Pool } = require("pg") as { Pool: new (c: object) => any };
+    const pg = require("pg") as { Pool: new (c: object) => any; default?: { Pool: new (c: object) => any } };
+    const Pool = pg.Pool || pg.default?.Pool;
+    if (!Pool) throw new Error("pg.Pool not found — run: pnpm add pg -F @workspace/api-server");
     pool = new Pool({
       connectionString: url,
-      ssl: url.includes("localhost") ? false : { rejectUnauthorized: false },
+      ssl: String(url).includes("localhost") ? false : { rejectUnauthorized: false },
     });
     return pool;
   } catch (e: any) {
-    throw new Error(
-      e?.message?.includes("Cannot find module")
-        ? "Install pg: pnpm add pg -F @workspace/api-server"
-        : e?.message || "pg failed"
-    );
+    const msg = String(e?.message || e);
+    if (/Cannot find module ['"]pg['"]/i.test(msg) || /not found/i.test(msg)) {
+      throw new Error("Install pg: pnpm add pg -F @workspace/api-server (and set DATABASE_URL)");
+    }
+    throw new Error(msg);
   }
 }
 
