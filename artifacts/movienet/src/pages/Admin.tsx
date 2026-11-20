@@ -11,6 +11,7 @@ import {
   Play,
   Square,
   RefreshCw,
+  MessageSquare,
 } from "lucide-react";
 
 type Ann = {
@@ -57,7 +58,7 @@ type CrawlerStatus = {
 
 export function Admin() {
   const { isLoaded, isSignedIn, userId, getToken } = useAuth();
-  const [tab, setTab] = useState<"announcements" | "users" | "crawler">("crawler");
+  const [tab, setTab] = useState<"announcements" | "users" | "crawler" | "support">("crawler");
   const [me, setMe] = useState<{ userId: string | null; isAdmin: boolean } | null>(null);
 
   const api = useCallback(
@@ -286,6 +287,7 @@ export function Admin() {
               ["crawler", "Crawler", Bot],
               ["announcements", "Announcements", Megaphone],
               ["users", "Users", Users],
+              ["support", "Support", MessageSquare],
             ] as const
           ).map(([id, label, Icon]) => (
             <button
@@ -540,6 +542,14 @@ export function Admin() {
             ))}
           </div>
         )}
+
+        {tab === "support" && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">Support tickets — reply and lock when done.</p>
+            <AdminSupport />
+          </div>
+        )}
+
       </div>
     </div>
   );
