@@ -7,7 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
-import supportRouter from "./routes/support.js";
+
 
 
 
@@ -49,6 +49,6 @@ app.use(clerkMiddleware({ publishableKey: clerkPublishableKey }));
 registerMedia(app);
 
 app.use("/api", router);
-app.use(supportRouter);
+
 
 export default app;
