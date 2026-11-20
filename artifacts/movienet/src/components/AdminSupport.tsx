@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Unlock, Send, RefreshCw } from "lucide-react";
@@ -16,19 +17,22 @@ type Ticket = {
 
 type Msg = { id: number; sender: string; body: string; createdAt: string };
 
-async function api(path: string, init?: RequestInit) {
-  const r = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    credentials: "include",
-  });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || r.statusText);
-  return d;
-}
-
 /** Drop into Admin under a "Support" tab */
 export function AdminSupport() {
+  const { getToken } = useAuth();
+  const api = useCallback(async (path: string, init?: RequestInit) => {
+    const token = await getToken().catch(() => null);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...((init?.headers as Record<string, string>) || {}),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const r = await fetch(path, { ...init, headers, credentials: "include" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    return d;
+  }, [getToken]);
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
