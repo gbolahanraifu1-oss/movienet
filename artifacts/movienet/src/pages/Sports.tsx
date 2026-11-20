@@ -115,6 +115,18 @@ export function Sports() {
                             <span className="text-xl font-display font-bold">{score.awayScore ?? '-'}</span>
                           </div>
                         </div>
+                        <a
+                          href={`/watch?${new URLSearchParams({
+                            type: "sports",
+                            source: "sports",
+                            title: `${score.homeTeam} vs ${score.awayTeam}`,
+                            q: `${score.homeTeam} ${score.awayTeam}`,
+                            league: score.league || "",
+                          }).toString()}`}
+                          className="mt-1 w-full text-center rounded-lg bg-primary/90 hover:bg-primary text-white text-xs font-semibold py-2 transition-colors"
+                        >
+                          Watch this match
+                        </a>
                       </CardContent>
                     </Card>
                   ))}
