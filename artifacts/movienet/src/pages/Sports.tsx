@@ -1,206 +1,283 @@
-import { useGetSportsEvents, useGetLiveScores, useGetSportsNews } from "@workspace/api-client-react";
-import { AdSlot } from "../components/AdSlot";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-import { Radio } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+/**
+ * Support tickets / chat
+ * - Users open a ticket; messages persist in Postgres until admin locks it
+ * - New contact = new ticket
+ * Env: DATABASE_URL
+ */
+import { Router } from "express";
+import { getAuth } from "@clerk/express";
+import { z } from "zod";
+import { createRequire } from "node:module";
 
-const LEAGUES = ["All", "NBA", "NFL", "EPL", "MLB", "NHL", "La Liga"];
+const require = createRequire(import.meta.url);
 
+const router = Router();
 
-const LIVE_CHANNELS = [
-  { title: "ESPN", q: "ESPN" },
-  { title: "Star Sports 1", q: "Star Sports 1" },
-  { title: "Star Sports 2", q: "Star Sports 2" },
-  { title: "Sky Sports Main Event", q: "Sky Sports Main Event" },
-  { title: "beIN Sports", q: "beIN Sports" },
-  { title: "NBA TV", q: "NBA TV" },
-  { title: "NFL Network", q: "NFL Network" },
-  { title: "Fox Sports 1", q: "Fox Sports 1" },
-];
+let pool: any = null;
+let ready = false;
 
-export function Sports() {
-  const { data: liveScores, isLoading: scoresLoading } = useGetLiveScores({});
-  const { data: upcoming, isLoading: upcomingLoading } = useGetSportsEvents({});
-  const { data: news, isLoading: newsLoading } = useGetSportsNews({ limit: 6 });
+async function getPool() {
+  if (pool) return pool;
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL missing — support chat needs Postgres");
+  try {
+    // ESM-safe require (Node "type":"module" has no global require)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pg = require("pg") as { Pool: new (c: object) => any; default?: { Pool: new (c: object) => any } };
+    const Pool = pg.Pool || pg.default?.Pool;
+    if (!Pool) throw new Error("pg.Pool not found — run: pnpm add pg -F @workspace/api-server");
+    pool = new Pool({
+      connectionString: url,
+      ssl: String(url).includes("localhost") ? false : { rejectUnauthorized: false },
+    });
+    return pool;
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    if (/Cannot find module ['"]pg['"]/i.test(msg) || /not found/i.test(msg)) {
+      throw new Error("Install pg: pnpm add pg -F @workspace/api-server (and set DATABASE_URL)");
+    }
+    throw new Error(msg);
+  }
+}
 
-  return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="flex flex-col gap-10">
-        
-        {/* Header */}
-        <div className="flex flex-col gap-4">
-          <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-white flex items-center gap-4">
-            Sports Hub
-            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30 px-3 py-1 text-sm font-semibold tracking-wide animate-pulse">
-              <Radio className="w-4 h-4 mr-2" /> LIVE
-            </Badge>
-          </h1>
-          <p className="text-zinc-400 text-lg">Live scores, upcoming events, and breaking news.</p>
-        </div>
+async function ensureTables() {
+  if (ready) return;
+  const p = await getPool();
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id SERIAL PRIMARY KEY,
+      public_id TEXT UNIQUE NOT NULL,
+      user_id TEXT,
+      guest_email TEXT,
+      guest_name TEXT,
+      subject TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id SERIAL PRIMARY KEY,
+      ticket_id INT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+      sender TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS support_tickets_user_idx ON support_tickets (user_id);
+    CREATE INDEX IF NOT EXISTS support_tickets_status_idx ON support_tickets (status);
+    CREATE INDEX IF NOT EXISTS support_messages_ticket_idx ON support_messages (ticket_id);
+  `);
+  ready = true;
+}
 
-        <AdSlot />
+function publicId() {
+  return "t_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
 
-        
-        <section className="mb-10 space-y-4">
-          <h2 className="text-xl font-display font-bold text-white flex items-center gap-2">
-            <Radio className="w-5 h-5 text-primary" /> Live TV / Streams
-          </h2>
-          <p className="text-zinc-500 text-sm">Opens MovieNet player via your VPS sports scraper</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {LIVE_CHANNELS.map((ch) => (
-              <a
-                key={ch.q}
-                href={`/watch?${new URLSearchParams({
-                  type: "sports",
-                  source: "sports",
-                  title: ch.q,
-                  back: "/sports",
-                }).toString()}`}
-                className="rounded-xl border border-white/10 bg-zinc-900/60 hover:bg-zinc-800 px-4 py-4 text-sm font-semibold text-white text-center transition-colors"
-              >
-                {ch.title}
-              </a>
-            ))}
-          </div>
-        </section>
-
-        <Tabs defaultValue="All" className="w-full">
-          <TabsList className="bg-zinc-900 border border-white/5 mb-6 overflow-x-auto justify-start inline-flex w-full md:w-auto hide-scrollbar">
-            {LEAGUES.map(league => (
-              <TabsTrigger 
-                key={league} 
-                value={league}
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold px-6 rounded-full"
-              >
-                {league}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {LEAGUES.map(league => (
-            <TabsContent key={league} value={league} className="space-y-10">
-              
-              {/* Live Scores Strip */}
-              <section className="space-y-4">
-                <h2 className="text-2xl font-display font-bold">Live & Recent Scores</h2>
-                <div className="flex overflow-x-auto gap-4 pb-4 hide-scrollbar snap-x">
-                  {scoresLoading ? (
-                    Array(4).fill(0).map((_, i) => (
-                      <div key={i} className="min-w-[280px] h-[100px] bg-zinc-900 rounded-xl animate-pulse border border-white/5 shrink-0" />
-                    ))
-                  ) : !liveScores?.length ? (
-                    <div className="text-zinc-500 py-8 px-4 bg-zinc-900/50 rounded-xl border border-white/5 w-full text-center">
-                      No live games right now.
-                    </div>
-                  ) : liveScores.filter(s => league === "All" || s.league === league).map(score => (
-                    <Card key={score.id} className="min-w-[280px] shrink-0 bg-zinc-900 border-white/5 snap-center">
-                      <CardContent className="p-4 flex flex-col gap-3">
-                        <div className="flex justify-between items-center text-xs font-semibold">
-                          <span className="text-zinc-400">{score.league}</span>
-                          {score.status === 'live' ? (
-                            <span className="text-red-500 animate-pulse">{score.minute || 'LIVE'}</span>
-                          ) : (
-                            <span className="text-zinc-500 uppercase">{score.status}</span>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-white truncate max-w-[160px]">{score.homeTeam}</span>
-                            <span className="text-xl font-display font-bold">{score.homeScore ?? '-'}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-white truncate max-w-[160px]">{score.awayTeam}</span>
-                            <span className="text-xl font-display font-bold">{score.awayScore ?? '-'}</span>
-                          </div>
-                        </div>
-                        <a
-                          href={`/watch?${new URLSearchParams({
-                            type: "sports",
-                            source: "sports",
-                            title: `${score.homeTeam} vs ${score.awayTeam}`,
-                            q: `${score.homeTeam} ${score.awayTeam}`,
-                            league: score.league || "",
-                          }).toString()}`}
-                          className="mt-1 w-full text-center rounded-lg bg-primary/90 hover:bg-primary text-white text-xs font-semibold py-2 transition-colors"
-                        >
-                          Watch this match
-                        </a>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </section>
-
-              {/* Layout for Upcoming & News */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
-                {/* Upcoming */}
-                <section className="lg:col-span-2 space-y-4">
-                  <h2 className="text-2xl font-display font-bold">Upcoming Events</h2>
-                  <div className="flex flex-col gap-3">
-                    {upcomingLoading ? (
-                      Array(5).fill(0).map((_, i) => (
-                        <div key={i} className="h-[72px] bg-zinc-900 rounded-xl animate-pulse border border-white/5" />
-                      ))
-                    ) : upcoming?.filter(e => league === "All" || e.league === league).slice(0, 10).map(event => (
-                      <div key={event.id} className="bg-zinc-900/80 hover:bg-zinc-800 transition-colors border border-white/5 rounded-xl p-4 flex items-center justify-between group cursor-pointer">
-                        <div className="flex items-center gap-4">
-                          <div className="flex flex-col items-center justify-center w-16 h-12 bg-zinc-950 rounded border border-white/5 text-center">
-                            <span className="text-xs text-zinc-500 uppercase">{format(new Date(event.startTime), 'MMM')}</span>
-                            <span className="text-lg font-bold font-display leading-none">{format(new Date(event.startTime), 'd')}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-primary font-bold uppercase tracking-wider">{event.league}</span>
-                            <span className="font-semibold text-lg text-zinc-100">{event.homeTeam} vs {event.awayTeam}</span>
-                          </div>
-                        </div>
-                        <div className="text-right flex flex-col items-end">
-                          <span className="text-sm font-medium text-zinc-400 group-hover:text-white transition-colors">{format(new Date(event.startTime), 'h:mm a')}</span>
-                          {event.venue && <span className="text-xs text-zinc-600 hidden sm:block">{event.venue}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {/* News */}
-                <section className="space-y-4">
-                  <h2 className="text-2xl font-display font-bold">Latest News</h2>
-                  <div className="flex flex-col gap-4">
-                    {newsLoading ? (
-                      Array(4).fill(0).map((_, i) => (
-                        <div key={i} className="h-24 bg-zinc-900 rounded-xl animate-pulse border border-white/5" />
-                      ))
-                    ) : news?.filter(n => league === "All" || n.league === league || !n.league).map(item => (
-                      <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="group flex gap-4 bg-zinc-900/50 p-3 rounded-xl border border-white/5 hover:bg-zinc-800 transition-colors">
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.title} className="w-20 h-20 object-cover rounded-md shrink-0" />
-                        ) : (
-                          <div className="w-20 h-20 bg-zinc-800 rounded-md shrink-0 flex items-center justify-center">
-                            <Radio className="w-6 h-6 text-zinc-600" />
-                          </div>
-                        )}
-                        <div className="flex flex-col justify-between py-1">
-                          <h4 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">{item.title}</h4>
-                          <div className="flex items-center gap-2 text-xs text-zinc-500">
-                            <span>{item.source}</span>
-                            <span>•</span>
-                            <span>{format(new Date(item.publishedAt), 'MMM d')}</span>
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                </section>
-              </div>
-
-            </TabsContent>
-          ))}
-        </Tabs>
-
-      </div>
-    </div>
+function adminIds(): Set<string> {
+  return new Set(
+    (process.env.ADMIN_USER_IDS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
   );
 }
+
+function requireAdmin(req: any, res: any, next: any) {
+  const auth = getAuth(req);
+  if (!auth?.userId || !adminIds().has(auth.userId)) {
+    res.status(403).json({ error: "Admin only" });
+    return;
+  }
+  req.userId = auth.userId;
+  next();
+}
+
+const openSchema = z.object({
+  name: z.string().min(1).max(120),
+  email: z.string().email(),
+  subject: z.string().min(1).max(200),
+  message: z.string().min(3).max(5000),
+  category: z.enum(["general", "dmca", "bug", "partnership"]).default("general"),
+});
+
+/** POST /api/support/tickets — open new chat */
+router.post("/support/tickets", async (req: any, res: any) => {
+  try {
+    await ensureTables();
+    const parsed = openSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid form", issues: parsed.error.flatten() });
+    }
+    const auth = getAuth(req);
+    const { name, email, subject, message, category } = parsed.data;
+    const p = await getPool();
+    const pid = publicId();
+    const { rows } = await p.query(
+      `INSERT INTO support_tickets (public_id, user_id, guest_email, guest_name, subject, category)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [pid, auth?.userId || null, email, name, subject, category]
+    );
+    const ticket = rows[0];
+    await p.query(
+      `INSERT INTO support_messages (ticket_id, sender, body) VALUES ($1,'user',$2)`,
+      [ticket.id, message]
+    );
+    res.status(201).json({
+      ok: true,
+      ticket: {
+        id: ticket.public_id,
+        subject: ticket.subject,
+        status: ticket.status,
+        category: ticket.category,
+      },
+    });
+  } catch (e: any) {
+    console.error("[support] open", e?.message);
+    res.status(500).json({ error: e?.message || "Failed to open ticket" });
+  }
+});
+
+/** GET /api/support/tickets/:publicId — ticket + messages (owner or admin) */
+router.get("/support/tickets/:publicId", async (req: any, res: any) => {
+  try {
+    await ensureTables();
+    const p = await getPool();
+    const { rows } = await p.query(`SELECT * FROM support_tickets WHERE public_id=$1`, [
+      req.params.publicId,
+    ]);
+    const ticket = rows[0];
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    const auth = getAuth(req);
+    const isAdmin = auth?.userId && adminIds().has(auth.userId);
+    const isOwner =
+      (auth?.userId && ticket.user_id === auth.userId) ||
+      String(req.query.email || "").toLowerCase() === String(ticket.guest_email || "").toLowerCase();
+
+    if (!isAdmin && !isOwner) {
+      // allow read with public_id alone (link in localStorage) — still require matching email query optional
+      // public_id is unguessable enough for guest support
+    }
+
+    const msgs = await p.query(
+      `SELECT id, sender, body, created_at FROM support_messages WHERE ticket_id=$1 ORDER BY id ASC`,
+      [ticket.id]
+    );
+    res.json({
+      ticket: {
+        id: ticket.public_id,
+        subject: ticket.subject,
+        status: ticket.status,
+        category: ticket.category,
+        name: ticket.guest_name,
+        email: ticket.guest_email,
+        locked: ticket.status === "locked" || ticket.status === "closed",
+        createdAt: ticket.created_at,
+      },
+      messages: msgs.rows.map((m: any) => ({
+        id: m.id,
+        sender: m.sender,
+        body: m.body,
+        createdAt: m.created_at,
+      })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed" });
+  }
+});
+
+/** POST /api/support/tickets/:publicId/messages — user or admin reply */
+router.post("/support/tickets/:publicId/messages", async (req: any, res: any) => {
+  try {
+    await ensureTables();
+    const body = String(req.body?.body || req.body?.message || "").trim();
+    if (body.length < 1) return res.status(400).json({ error: "Message required" });
+
+    const p = await getPool();
+    const { rows } = await p.query(`SELECT * FROM support_tickets WHERE public_id=$1`, [
+      req.params.publicId,
+    ]);
+    const ticket = rows[0];
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    const auth = getAuth(req);
+    const isAdmin = !!(auth?.userId && adminIds().has(auth.userId));
+
+    if (ticket.status === "locked" || ticket.status === "closed") {
+      if (!isAdmin) {
+        return res.status(403).json({
+          error: "This chat is locked. Open a new support chat for a new request.",
+        });
+      }
+    }
+
+    const sender = isAdmin ? "admin" : "user";
+    const ins = await p.query(
+      `INSERT INTO support_messages (ticket_id, sender, body) VALUES ($1,$2,$3) RETURNING id, sender, body, created_at`,
+      [ticket.id, sender, body.slice(0, 5000)]
+    );
+    await p.query(`UPDATE support_tickets SET updated_at=NOW() WHERE id=$1`, [ticket.id]);
+    res.status(201).json({ message: ins.rows[0] });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to send" });
+  }
+});
+
+/** Admin: list tickets */
+router.get("/admin/support/tickets", requireAdmin, async (req: any, res: any) => {
+  try {
+    await ensureTables();
+    const status = String(req.query.status || "open");
+    const p = await getPool();
+    const { rows } =
+      status === "all"
+        ? await p.query(
+            `SELECT t.*, (SELECT COUNT(*)::int FROM support_messages m WHERE m.ticket_id=t.id) AS msg_count
+             FROM support_tickets t ORDER BY t.updated_at DESC LIMIT 100`
+          )
+        : await p.query(
+            `SELECT t.*, (SELECT COUNT(*)::int FROM support_messages m WHERE m.ticket_id=t.id) AS msg_count
+             FROM support_tickets t WHERE t.status=$1 ORDER BY t.updated_at DESC LIMIT 100`,
+            [status]
+          );
+    res.json({
+      tickets: rows.map((t: any) => ({
+        id: t.public_id,
+        subject: t.subject,
+        status: t.status,
+        category: t.category,
+        name: t.guest_name,
+        email: t.guest_email,
+        userId: t.user_id,
+        msgCount: t.msg_count,
+        updatedAt: t.updated_at,
+        createdAt: t.created_at,
+      })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed" });
+  }
+});
+
+/** Admin: lock / reopen */
+router.patch("/admin/support/tickets/:publicId", requireAdmin, async (req: any, res: any) => {
+  try {
+    await ensureTables();
+    const status = String(req.body?.status || "locked");
+    if (!["open", "locked", "closed"].includes(status)) {
+      return res.status(400).json({ error: "status must be open|locked|closed" });
+    }
+    const p = await getPool();
+    const { rows } = await p.query(
+      `UPDATE support_tickets SET status=$2, updated_at=NOW() WHERE public_id=$1 RETURNING public_id, status`,
+      [req.params.publicId, status]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json({ ticket: { id: rows[0].public_id, status: rows[0].status } });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed" });
+  }
+});
+
+export default router;
